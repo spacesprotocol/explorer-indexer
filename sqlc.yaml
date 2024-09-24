@@ -1,0 +1,14 @@
+version: "1"
+packages:
+  - name: "db"
+    path: "pkg/db"
+    queries: "./sql/query/"
+    schema: "./sql/schema/"
+    engine: "postgresql"
+    emit_empty_slices: true
+overrides:
+  - go_type: "github.com/spacesprotocol/explorer-backend/pkg/types.Bytes"
+    db_type: "bytea"
+  - go_type: "*github.com/spacesprotocol/explorer-backend/pkg/types.Bytes"
+    db_type: "bytea"
+    nullable: true
