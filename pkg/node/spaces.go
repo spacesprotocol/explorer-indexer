@@ -64,12 +64,12 @@ func (client *SpacesClient) GetRollOut(ctx context.Context, number int) (*[]Spac
 	return &spaces, err
 }
 
-func (client *SpacesClient) GetBlockData(ctx context.Context, blockHash string) (*[]Transaction, error) {
-	var txs []Transaction
+func (client *SpacesClient) GetBlockData(ctx context.Context, blockHash string) (*SpacesBlock, error) {
+	txs := new(SpacesBlock)
 	err := client.Rpc(ctx, "getblockdata", []interface{}{blockHash}, txs)
 	if err != nil {
 		log.Print(err)
 		return nil, err
 	}
-	return &txs, err
+	return txs, err
 }

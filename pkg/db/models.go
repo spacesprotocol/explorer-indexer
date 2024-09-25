@@ -6,9 +6,54 @@ package db
 
 import (
 	"database/sql"
+	"database/sql/driver"
+	"fmt"
 
 	"github.com/spacesprotocol/explorer-backend/pkg/types"
 )
+
+type CovenantAction string
+
+const (
+	CovenantActionRESERVE  CovenantAction = "RESERVE"
+	CovenantActionBID      CovenantAction = "BID"
+	CovenantActionTRANSFER CovenantAction = "TRANSFER"
+)
+
+func (e *CovenantAction) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = CovenantAction(s)
+	case string:
+		*e = CovenantAction(s)
+	default:
+		return fmt.Errorf("unsupported scan type for CovenantAction: %T", src)
+	}
+	return nil
+}
+
+type NullCovenantAction struct {
+	CovenantAction CovenantAction
+	Valid          bool // Valid is true if CovenantAction is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullCovenantAction) Scan(value interface{}) error {
+	if value == nil {
+		ns.CovenantAction, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.CovenantAction.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullCovenantAction) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.CovenantAction), nil
+}
 
 type Block struct {
 	Hash           types.Bytes
@@ -44,7 +89,7 @@ type TxInput struct {
 	BlockHash    types.Bytes
 	Txid         types.Bytes
 	Index        int64
-	HashPrevout  types.Bytes
+	HashPrevout  *types.Bytes
 	IndexPrevout int64
 	Sequence     int64
 	Coinbase     *types.Bytes
@@ -57,4 +102,17 @@ type TxOutput struct {
 	Index        int32
 	Value        int64
 	Scriptpubkey *types.Bytes
+}
+
+type Vmetaout struct {
+	BlockHash      types.Bytes
+	Txid           types.Bytes
+	Index          int64
+	OutpointTxid   types.Bytes
+	OutpointIndex  int64
+	Name           string
+	BurnIncrement  sql.NullInt64
+	CovenantAction CovenantAction
+	ClaimHeight    sql.NullInt64
+	ExpireHeight   sql.NullInt64
 }

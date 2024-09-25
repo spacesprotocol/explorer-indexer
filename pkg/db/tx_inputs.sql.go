@@ -96,19 +96,18 @@ func (q *Queries) GetTxInputsByTxid(ctx context.Context, txid types.Bytes) ([]Tx
 }
 
 const insertTxInput = `-- name: InsertTxInput :exec
-INSERT INTO tx_inputs (block_hash, txid, index, hash_prevout, index_prevout, sequence, coinbase, txinwitness)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+INSERT INTO tx_inputs (block_hash, txid, index, hash_prevout, index_prevout, sequence, coinbase)
+VALUES ($1, $2, $3, $4, $5, $6, $7)
 `
 
 type InsertTxInputParams struct {
 	BlockHash    types.Bytes
 	Txid         types.Bytes
 	Index        int64
-	HashPrevout  types.Bytes
+	HashPrevout  *types.Bytes
 	IndexPrevout int64
 	Sequence     int64
 	Coinbase     *types.Bytes
-	Txinwitness  []types.Bytes
 }
 
 func (q *Queries) InsertTxInput(ctx context.Context, arg InsertTxInputParams) error {
@@ -120,7 +119,6 @@ func (q *Queries) InsertTxInput(ctx context.Context, arg InsertTxInputParams) er
 		arg.IndexPrevout,
 		arg.Sequence,
 		arg.Coinbase,
-		pq.Array(arg.Txinwitness),
 	)
 	return err
 }

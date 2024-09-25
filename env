@@ -4,8 +4,11 @@ export POSTGRES_URI=postgres://postgres:postgres@127.0.0.1/postgres?sslmode=disa
 export GOOSE_DBSTRING=$POSTGRES_URI
 export GOOSE_MIGRATION_DIR=sql/schema
 export GOOSE_DRIVER=postgres
+export BITCOIN_NODE_URI=http://127.0.0.1:48332
+export BITCOIN_NODE_USER=test
+export BITCOIN_NODE_PASSWORD=test
+export SPACES_NODE_URI=http://127.0.0.1:7224
 # export NODE_API_ORIGIN=http://127.0.0.1:12037
 # export NODE_API_KEY=api
-# export REST_ADDR=:8000
-# export UPDATE_DB_INTERVAL=10
-#
+export REST_ADDR=:9000
+export UPDATE_DB_INTERVAL=10

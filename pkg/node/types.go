@@ -1,6 +1,7 @@
 package node
 
 import (
+	"encoding/json"
 	"math"
 
 	. "github.com/spacesprotocol/explorer-backend/pkg/types"
@@ -16,33 +17,45 @@ type Block struct {
 	Version        int32         `json:"version"`
 	HashMerkleRoot Bytes         `json:"merkleRoot"`
 	Transactions   []Transaction `json:"tx"`
-	// WitnessRoot    Bytes         `json:"witnessRoot"`
-	// TreeRoot       Bytes         `json:"treeRoot"`
-	// ReservedRoot   Bytes         `json:"reservedRoot"`
-	// Mask           Bytes         `json:"mask"`
-	Time          int32   `json:"time"`
-	MedianTime    int32   `json:"mediantime"`
-	Nonce         int64   `json:"nonce"`
-	Bits          Bytes   `json:"bits"`
-	Difficulty    float64 `json:"difficulty"`
-	Chainwork     Bytes   `json:"chainwork"`
-	PrevBlockHash Bytes   `json:"previousblockhash"`
-	NextBlockHash Bytes   `json:"nextblockhash,omitempty"`
-	// ExtraNonce     Bytes         `json:"extraNonce"`
+	Time           int32         `json:"time"`
+	MedianTime     int32         `json:"mediantime"`
+	Nonce          int64         `json:"nonce"`
+	Bits           Bytes         `json:"bits"`
+	Difficulty     float64       `json:"difficulty"`
+	Chainwork      Bytes         `json:"chainwork"`
+	PrevBlockHash  Bytes         `json:"previousblockhash"`
+	NextBlockHash  Bytes         `json:"nextblockhash,omitempty"`
 }
 
 type Transaction struct {
-	Txid     Bytes   `json:"txid"`
-	Hash     Bytes   `json:"hash"`
-	Version  int     `json:"version"`
-	Size     int     `json:"size"`
-	VSize    int     `json:"vsize"`
-	Weight   int     `json:"weight"`
-	LockTime uint32  `json:"locktime"`
-	Vin      []Vin   `json:"vin"`
-	Vout     []Vout  `json:"vout"`
-	FloatFee float64 `json:"fee,omitempty"` // Fee is optional
-	// Vmetaout []Vmetaout `json:"vmetaout"`
+	Txid     Bytes      `json:"txid"`
+	Hash     Bytes      `json:"hash"`
+	Version  int        `json:"version"`
+	Size     int        `json:"size"`
+	VSize    int        `json:"vsize"`
+	Weight   int        `json:"weight"`
+	LockTime uint32     `json:"locktime"`
+	Vin      []Vin      `json:"vin"`
+	Vout     []Vout     `json:"vout"`
+	FloatFee float64    `json:"fee,omitempty"` // Fee is optional
+	Vmetaout []VMetaOut `json:"vmetaout"`
+}
+
+func (t *Transaction) UnmarshalJSON(data []byte) error {
+	type TxAlias Transaction
+	aux := &struct {
+		LocktimeAlt *uint32 `json:"lock_time"`
+		*TxAlias
+	}{
+		TxAlias: (*TxAlias)(t),
+	}
+	if err := json.Unmarshal(data, &aux); err != nil {
+		return err
+	}
+	if aux.LocktimeAlt != nil {
+		t.LockTime = *aux.LocktimeAlt
+	}
+	return nil
 }
 
 func (tx *Transaction) TxHash() Bytes {
@@ -64,7 +77,7 @@ func (tx *Transaction) Fee() int {
 // }
 
 type Vin struct {
-	HashPrevout  Bytes      `json:"txid,omitempty"`
+	HashPrevout  *Bytes     `json:"txid,omitempty"`
 	IndexPrevout int        `json:"vout,omitempty"`
 	ScriptSig    *ScriptSig `json:"scriptSig,omitempty"`
 	Coinbase     Bytes      `json:"coinbase,omitempty"`
@@ -94,14 +107,6 @@ type ScriptPubKey struct {
 	Address string `json:"address"`
 	Type    string `json:"type"`
 }
-
-//	type Space struct {
-//		Outpoint     string   `json:"outpoint"`
-//		Value        int      `json:"value"`
-//		ScriptPubKey string   `json:"script_pubkey"`
-//		Name         string   `json:"name"`
-//		Covenant     Covenant `json:"covenant"`
-//	}
 
 // Spaces types
 type Tip struct {
@@ -134,7 +139,7 @@ type Covenant struct {
 }
 
 type SpacesBlock struct {
-	TxData []SpacesTx `json:"tx_data"`
+	Transactions []Transaction `json:"tx_data"`
 }
 
 type SpacesTx struct {

@@ -1,6 +1,6 @@
 -- name: InsertTxInput :exec
-INSERT INTO tx_inputs (block_hash, txid, index, hash_prevout, index_prevout, sequence, coinbase, txinwitness)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8);
+INSERT INTO tx_inputs (block_hash, txid, index, hash_prevout, index_prevout, sequence, coinbase)
+VALUES ($1, $2, $3, $4, $5, $6, $7);
 
 
 -- name: GetTxInputsByTxid :many
