@@ -1,8 +1,12 @@
 package node
 
 import (
+	"encoding/hex"
 	"encoding/json"
+	"log"
 	"math"
+	"strconv"
+	"strings"
 
 	. "github.com/spacesprotocol/explorer-backend/pkg/types"
 )
@@ -38,7 +42,7 @@ type Transaction struct {
 	Vin      []Vin      `json:"vin"`
 	Vout     []Vout     `json:"vout"`
 	FloatFee float64    `json:"fee,omitempty"` // Fee is optional
-	Vmetaout []VMetaOut `json:"vmetaout"`
+	VMetaOut []VMetaOut `json:"vmetaout"`
 }
 
 func (t *Transaction) UnmarshalJSON(data []byte) error {
@@ -127,15 +131,14 @@ type Space struct {
 	Covenant     Covenant `json:"covenant"`
 }
 
-// Define the Covenant struct
 type Covenant struct {
 	Type          string      `json:"type"`
-	BurnIncrement *int        `json:"burn_increment,omitempty"` // Use pointer for optional fields
-	Signature     *string     `json:"signature,omitempty"`      // Use pointer for optional fields
+	BurnIncrement *int        `json:"burn_increment,omitempty"`
+	Signature     *string     `json:"signature,omitempty"`
 	TotalBurned   int         `json:"total_burned"`
-	ClaimHeight   *int        `json:"claim_height,omitempty"`  // Use pointer for optional fields
-	ExpireHeight  *int        `json:"expire_height,omitempty"` // Use pointer for optional fields
-	Data          interface{} `json:"data,omitempty"`          // Use interface{} for generic fields
+	ClaimHeight   *int        `json:"claim_height,omitempty"`
+	ExpireHeight  *int        `json:"expire_height,omitempty"`
+	Data          interface{} `json:"data,omitempty"`
 }
 
 type SpacesBlock struct {
@@ -171,6 +174,26 @@ type VMetaOut struct {
 	Outpoint     string   `json:"outpoint"`
 	Value        int      `json:"value"`
 	ScriptPubKey string   `json:"script_pubkey"`
-	Name         string   `json:"name"`
+	ResponseName string   `json:"name"`
 	Covenant     Covenant `json:"covenant"`
+}
+
+func (vmeta *VMetaOut) OutpointTxid() Bytes {
+	log.Print("outpoint", vmeta.Outpoint)
+	str := strings.Split(vmeta.Outpoint, ":")
+
+	res, err := hex.DecodeString(str[0])
+	if err != nil {
+		return nil
+	}
+	return res
+}
+
+func (vmeta *VMetaOut) OutpointIndex() int {
+	str := strings.Split(vmeta.Outpoint, ":")
+	res, err := strconv.Atoi(str[1])
+	if err != nil {
+		return -1
+	}
+	return res
 }

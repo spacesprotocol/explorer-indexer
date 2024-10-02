@@ -3,6 +3,9 @@ package main
 import (
 	"context"
 	"database/sql"
+	"errors"
+	"fmt"
+	"log"
 
 	"github.com/jinzhu/copier"
 	"github.com/spacesprotocol/explorer-backend/pkg/db"
@@ -10,63 +13,60 @@ import (
 	. "github.com/spacesprotocol/explorer-backend/pkg/types"
 )
 
-func syncSpacesBlock(pg *sql.DB, block *node.Block) error {
-
-
-	return nil
-}
-
-func syncSpacesTransactions(pg *sql.DB, txs []node.Transaction) error {
-	sqlTx, err := pg.BeginTx(context.Background(), nil)
-	if err != nil {
-		return err
-	}
-	defer sqlTx.Rollback()
+func syncSpacesTransactions(pg *sql.DB, txs []node.Transaction, blockHash Bytes, sqlTx *sql.Tx) (*sql.Tx, error) {
 	q := db.New(sqlTx)
-	
-	// blockParams := db.InsertBlockParams{}
-	// copier.Copy(&blockParams, &block)
-	// if err := q.InsertBlock(context.Background(), blockParams); err != nil {
-		// return err
-	// }
-	for tx_index, transaction := range txs {
-		ind := int32(tx_index)
-		if err := insertTransaction(q, &transaction, &blockParams.Hash, &ind); err != nil {
-			return err
+	for _, transaction := range txs {
+		// tx_ind := int32(tx_index)
+		for vmetaout_index, vmetaout := range transaction.VMetaOut {
+			//TODO throw an error, current behaviour is to skip
+			if len(vmetaout.Outpoint) == 0 {
+				log.Printf("found bad vmetaout %+v skipping", vmetaout)
+				continue
+			}
+			vmet := db.InsertVMetaOutParams{}
+			// log.Print(transaction.Txid)
+			//now works incorrectly on
+			copier.Copy(&vmet, &vmetaout)
+			vmet.TxIndex = int64(vmetaout_index)
+			vmet.Txid = transaction.Txid
+			vmet.BlockHash = blockHash
+			if len(vmetaout.ResponseName) > 0 && vmetaout.ResponseName[0] == '@' {
+				vmet.Name = vmetaout.ResponseName[1:]
+			} else {
+				return sqlTx, fmt.Errorf("invalid spaces name %s", vmet.Name)
+			}
+			switch vmetaout.Covenant.Type {
+			case "bid":
+				vmet.CovenantAction = db.CovenantActionBID
+			case "reserve":
+				vmet.CovenantAction = db.CovenantActionRESERVE
+			case "transfer":
+				vmet.CovenantAction = db.CovenantActionTRANSFER
+			default:
+				return sqlTx, errors.New("Unknown covenant action")
+			}
+			if err := q.InsertVMetaOut(context.Background(), vmet); err != nil {
+				return sqlTx, err
+			}
 		}
 	}
-	if err := tx.Commit(); err != nil {
-		return err
-	}
-	return nil
-
-
-
-	return nil
+	return sqlTx, nil
 }
 
-func syncBlock(pg *sql.DB, block *node.Block) error {
-	tx, err := pg.BeginTx(context.Background(), nil)
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback()
-	q := db.New(tx)
+func syncBlock(pg *sql.DB, block *node.Block, sqlTx *sql.Tx) (*sql.Tx, error) {
+	q := db.New(sqlTx)
 	blockParams := db.InsertBlockParams{}
 	copier.Copy(&blockParams, &block)
 	if err := q.InsertBlock(context.Background(), blockParams); err != nil {
-		return err
+		return sqlTx, err
 	}
 	for tx_index, transaction := range block.Transactions {
 		ind := int32(tx_index)
 		if err := insertTransaction(q, &transaction, &blockParams.Hash, &ind); err != nil {
-			return err
+			return sqlTx, err
 		}
 	}
-	if err := tx.Commit(); err != nil {
-		return err
-	}
-	return nil
+	return sqlTx, nil
 }
 
 func insertTransaction(q *db.Queries, transaction *node.Transaction, blockHash *Bytes, index *int32) error {
@@ -93,26 +93,16 @@ func insertTransaction(q *db.Queries, transaction *node.Transaction, blockHash *
 		txInputParams.Txid = transactionParams.Txid
 		txInputParams.Index = int64(index)
 		copier.Copy(&txInputParams, &txInput)
-		// log.Printf("witness from node %+v", txInput.TxinWitness)
-		// log.Printf("witness from db %+v", txInputParams.Txinwitness)
-		// log.Printf("%+v", txInputParams)
-		// log.Print(txInputParams.HashPrevout)
-		// log.Print(txInputParams.HashPrevout == nil)
 		if err := q.InsertTxInput(context.Background(), txInputParams); err != nil {
 			return err
 		}
 	}
-	// log.Print("www")
 	for index, txOutput := range transaction.Vout {
 		txOutputParams := db.InsertTxOutputParams{}
 		txOutputParams.Txid = transactionParams.Txid
 		txOutputParams.BlockHash = *blockHash
 		copier.Copy(&txOutputParams, &txOutput)
 		txOutputParams.Index = int32(index)
-		// log.Printf("%+v", txOutputParams)
-		// st, _ := transaction.Txid.MarshalJSON()
-		// log.Print(string(st))
-		// log.Print(index)
 		if err := q.InsertTxOutput(context.Background(), txOutputParams); err != nil {
 			return err
 		}

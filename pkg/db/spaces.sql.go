@@ -13,10 +13,10 @@ import (
 )
 
 const getVMetaOutsByTxid = `-- name: GetVMetaOutsByTxid :many
-SELECT block_hash, txid, index, outpoint_txid, outpoint_index, name, burn_increment, covenant_action, claim_height, expire_height
+SELECT block_hash, txid, tx_index, outpoint_txid, outpoint_index, name, burn_increment, covenant_action, claim_height, expire_height
 FROM vmetaouts
 WHERE txid = $1
-ORDER BY index
+ORDER BY tx_index
 `
 
 func (q *Queries) GetVMetaOutsByTxid(ctx context.Context, txid types.Bytes) ([]Vmetaout, error) {
@@ -31,7 +31,7 @@ func (q *Queries) GetVMetaOutsByTxid(ctx context.Context, txid types.Bytes) ([]V
 		if err := rows.Scan(
 			&i.BlockHash,
 			&i.Txid,
-			&i.Index,
+			&i.TxIndex,
 			&i.OutpointTxid,
 			&i.OutpointIndex,
 			&i.Name,
@@ -54,10 +54,10 @@ func (q *Queries) GetVMetaOutsByTxid(ctx context.Context, txid types.Bytes) ([]V
 }
 
 const getVMetaoutsByBlockAndTxid = `-- name: GetVMetaoutsByBlockAndTxid :many
-SELECT block_hash, txid, index, outpoint_txid, outpoint_index, name, burn_increment, covenant_action, claim_height, expire_height
+SELECT block_hash, txid, tx_index, outpoint_txid, outpoint_index, name, burn_increment, covenant_action, claim_height, expire_height
 FROM vmetaouts
 WHERE block_hash = $1 and txid = $2
-ORDER BY index
+ORDER BY tx_index
 `
 
 type GetVMetaoutsByBlockAndTxidParams struct {
@@ -77,7 +77,7 @@ func (q *Queries) GetVMetaoutsByBlockAndTxid(ctx context.Context, arg GetVMetaou
 		if err := rows.Scan(
 			&i.BlockHash,
 			&i.Txid,
-			&i.Index,
+			&i.TxIndex,
 			&i.OutpointTxid,
 			&i.OutpointIndex,
 			&i.Name,
@@ -100,14 +100,14 @@ func (q *Queries) GetVMetaoutsByBlockAndTxid(ctx context.Context, arg GetVMetaou
 }
 
 const insertVMetaOut = `-- name: InsertVMetaOut :exec
-INSERT INTO vmetaouts (block_hash, txid, index, outpoint_txid, outpoint_index, name, burn_increment, covenant_action, claim_height, expire_height)
+INSERT INTO vmetaouts (block_hash, txid, tx_index, outpoint_txid, outpoint_index, name, burn_increment, covenant_action, claim_height, expire_height)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 `
 
 type InsertVMetaOutParams struct {
 	BlockHash      types.Bytes
 	Txid           types.Bytes
-	Index          int64
+	TxIndex        int64
 	OutpointTxid   types.Bytes
 	OutpointIndex  int64
 	Name           string
@@ -121,7 +121,7 @@ func (q *Queries) InsertVMetaOut(ctx context.Context, arg InsertVMetaOutParams) 
 	_, err := q.db.ExecContext(ctx, insertVMetaOut,
 		arg.BlockHash,
 		arg.Txid,
-		arg.Index,
+		arg.TxIndex,
 		arg.OutpointTxid,
 		arg.OutpointIndex,
 		arg.Name,

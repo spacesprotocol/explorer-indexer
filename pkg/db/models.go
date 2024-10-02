@@ -107,7 +107,7 @@ type TxOutput struct {
 type Vmetaout struct {
 	BlockHash      types.Bytes
 	Txid           types.Bytes
-	Index          int64
+	TxIndex        int64
 	OutpointTxid   types.Bytes
 	OutpointIndex  int64
 	Name           string

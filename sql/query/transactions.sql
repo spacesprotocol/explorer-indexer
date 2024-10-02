@@ -31,3 +31,4 @@ LIMIT $1 OFFSET $2;
 -- name: DeleteMempool :exec
 DELETE FROM transactions
 WHERE block_hash IS NULL;
+

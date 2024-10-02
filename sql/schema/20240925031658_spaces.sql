@@ -7,15 +7,15 @@ AS ENUM ('RESERVE', 'BID', 'TRANSFER');
 CREATE TABLE vmetaouts (
     block_hash bytea NOT NULL references blocks (hash) on delete cascade,
     txid bytea NOT NULL references transactions (txid) on delete cascade,
-    "index" bigint NOT NULL,
+    tx_index bigint NOT NULL CHECK(tx_index >= 0),
     outpoint_txid bytea NOT NULL references transactions (txid),
-    outpoint_index bigint NOT NULL,
-    name string NOT NULL CHECK (LENGTH(name < 64)),
+    outpoint_index bigint NOT NULL CHECK(outpoint_index >= 0),
+    name TEXT NOT NULL CHECK (LENGTH(name) < 64),
     burn_increment bigint,
     covenant_action covenant_action NOT NULL,
     claim_height bigint,
     expire_height bigint,
-    PRIMARY KEY (block_hash, txid, index)
+    PRIMARY KEY (block_hash, txid, tx_index)
 );
 
 -- +goose StatementEnd

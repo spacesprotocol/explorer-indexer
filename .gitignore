@@ -1,1 +1,3 @@
 pgdata/
+*.dump
+dump.sql
