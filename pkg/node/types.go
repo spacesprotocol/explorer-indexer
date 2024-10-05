@@ -95,9 +95,9 @@ type ScriptSig struct {
 }
 
 type Vout struct {
-	FloatValue   float64      `json:"value"`
-	Index        int          `json:"n"`
-	ScriptPubKey ScriptPubKey `json:"scriptPubKey"`
+	FloatValue       float64      `json:"value"`
+	Index            int          `json:"n"`
+	NodeScriptPubKey ScriptPubKey `json:"scriptPubKey"`
 }
 
 func (vout *Vout) Value() int {
@@ -196,4 +196,8 @@ func (vmeta *VMetaOut) OutpointIndex() int {
 		return -1
 	}
 	return res
+}
+
+func (vout *Vout) Scriptpubkey() *Bytes {
+	return &vout.NodeScriptPubKey.Hex
 }

@@ -18,6 +18,7 @@ CREATE TABLE blocks (
 );
 
 CREATE INDEX block_height_index ON blocks (height); 
+CREATE EXTENSION pg_trgm;
 
 
 -- +goose StatementEnd
@@ -26,4 +27,5 @@ CREATE INDEX block_height_index ON blocks (height);
 -- +goose StatementBegin
 DROP INDEX block_height_index;
 DROP TABLE blocks;
+DROP EXTENSION pg_trgm;
 -- +goose StatementEnd
