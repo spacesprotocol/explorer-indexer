@@ -13,3 +13,9 @@ SELECT *
 FROM tx_outputs
 WHERE block_hash = $1 and txid = $2
 ORDER BY index;
+
+
+-- name: SetSpender :exec
+UPDATE tx_outputs
+SET spender_txid = $3, spender_index = $4
+WHERE txid = $1 AND index = $2;

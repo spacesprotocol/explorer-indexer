@@ -99,9 +99,11 @@ type TxInput struct {
 type TxOutput struct {
 	BlockHash    types.Bytes
 	Txid         types.Bytes
-	Index        int32
+	Index        int64
 	Value        int64
-	Scriptpubkey *types.Bytes
+	Scriptpubkey types.Bytes
+	SpenderTxid  *types.Bytes
+	SpenderIndex sql.NullInt64
 }
 
 type Vmetaout struct {

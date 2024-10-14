@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"log"
 
 	"github.com/jinzhu/copier"
 	"github.com/spacesprotocol/explorer-backend/pkg/db"
@@ -13,19 +12,19 @@ import (
 	. "github.com/spacesprotocol/explorer-backend/pkg/types"
 )
 
-func syncSpacesTransactions(pg *sql.DB, txs []node.Transaction, blockHash Bytes, sqlTx *sql.Tx) (*sql.Tx, error) {
+func syncSpacesTransactions(txs []node.Transaction, blockHash Bytes, sqlTx *sql.Tx) (*sql.Tx, error) {
 	q := db.New(sqlTx)
 	for _, transaction := range txs {
 		// tx_ind := int32(tx_index)
 		for vmetaout_index, vmetaout := range transaction.VMetaOut {
 			//TODO throw an error, current behaviour is to skip
 			if len(vmetaout.Outpoint) == 0 {
-				log.Printf("found bad vmetaout %+v skipping", vmetaout)
-				continue
+				// log.Printf("found bad vmetaout %+v skipping", vmetaout)
+				return sqlTx, fmt.Errorf("found bad vmetaout without outpoint %+v", vmetaout)
+				// continue
 			}
 			vmet := db.InsertVMetaOutParams{}
 			// log.Print(transaction.Txid)
-			//now works incorrectly on
 			copier.Copy(&vmet, &vmetaout)
 			vmet.TxIndex = int64(vmetaout_index)
 			vmet.Txid = transaction.Txid
@@ -53,7 +52,7 @@ func syncSpacesTransactions(pg *sql.DB, txs []node.Transaction, blockHash Bytes,
 	return sqlTx, nil
 }
 
-func syncBlock(pg *sql.DB, block *node.Block, sqlTx *sql.Tx) (*sql.Tx, error) {
+func syncBlock(block *node.Block, sqlTx *sql.Tx) (*sql.Tx, error) {
 	q := db.New(sqlTx)
 	blockParams := db.InsertBlockParams{}
 	copier.Copy(&blockParams, &block)
@@ -69,40 +68,55 @@ func syncBlock(pg *sql.DB, block *node.Block, sqlTx *sql.Tx) (*sql.Tx, error) {
 	return sqlTx, nil
 }
 
-func insertTransaction(q *db.Queries, transaction *node.Transaction, blockHash *Bytes, index *int32) error {
+func insertTransaction(q *db.Queries, transaction *node.Transaction, blockHash *Bytes, txIndex *int32) error {
 	transactionParams := db.InsertTransactionParams{}
-
-	// st, _ := transaction.Txid.MarshalJSON()
 	copier.Copy(&transactionParams, &transaction)
 	var err error
 	transactionParams.BlockHash = blockHash
 	var nullableIndex sql.NullInt32
-	if index == nil {
+	if txIndex == nil {
 		nullableIndex.Valid = false
 	} else {
 		nullableIndex.Valid = true
-		nullableIndex.Int32 = *index
+		nullableIndex.Int32 = *txIndex
 	}
 	transactionParams.Index = nullableIndex
 	if err = q.InsertTransaction(context.Background(), transactionParams); err != nil {
 		return err
 	}
-	for index, txInput := range transaction.Vin {
+	for input_index, txInput := range transaction.Vin {
 		txInputParams := db.InsertTxInputParams{}
+		copier.Copy(&txInputParams, &txInput)
 		txInputParams.BlockHash = *blockHash
 		txInputParams.Txid = transactionParams.Txid
-		txInputParams.Index = int64(index)
-		copier.Copy(&txInputParams, &txInput)
+		txInputParams.Index = int64(input_index)
+
 		if err := q.InsertTxInput(context.Background(), txInputParams); err != nil {
 			return err
 		}
+
+		if txInputParams.Coinbase == nil {
+			var nullableIndex64 sql.NullInt64
+			nullableIndex64.Valid = true
+			nullableIndex64.Int64 = int64(input_index)
+			setSpenderParams := db.SetSpenderParams{
+				// BlockHash:    txInputParams.BlockHash, do i need it?
+				Txid:         *(txInputParams.HashPrevout),
+				Index:        txInputParams.IndexPrevout,
+				SpenderTxid:  &transactionParams.Txid,
+				SpenderIndex: nullableIndex64,
+			}
+			if err = q.SetSpender(context.Background(), setSpenderParams); err != nil {
+				return err
+			}
+		}
 	}
-	for index, txOutput := range transaction.Vout {
+	for output_index, txOutput := range transaction.Vout {
 		txOutputParams := db.InsertTxOutputParams{}
 		txOutputParams.Txid = transactionParams.Txid
 		txOutputParams.BlockHash = *blockHash
 		copier.Copy(&txOutputParams, &txOutput)
-		txOutputParams.Index = int32(index)
+		txOutputParams.Index = int64(output_index)
 		if err := q.InsertTxOutput(context.Background(), txOutputParams); err != nil {
 			return err
 		}

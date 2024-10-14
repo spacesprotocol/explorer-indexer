@@ -22,6 +22,6 @@ CREATE TABLE vmetaouts (
 
 -- +goose Down
 -- +goose StatementBegin
-DROP TYPE covenant_action;
 DROP TABLE vmetaouts;
+DROP TYPE covenant_action;
 -- +goose StatementEnd

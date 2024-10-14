@@ -40,3 +40,6 @@ WHERE height > $1;
 
 -- name: SetOrphanAfterHeight :exec
 UPDATE blocks SET orphan = true WHERE height > $1;
+
+-- name: SetNegativeHeightToOrphans :exec
+UPDATE blocks SET height = -2 WHERE orphan = true;

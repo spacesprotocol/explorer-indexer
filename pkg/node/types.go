@@ -84,7 +84,7 @@ type Vin struct {
 	HashPrevout  *Bytes     `json:"txid,omitempty"`
 	IndexPrevout int        `json:"vout,omitempty"`
 	ScriptSig    *ScriptSig `json:"scriptSig,omitempty"`
-	Coinbase     Bytes      `json:"coinbase,omitempty"`
+	Coinbase     *Bytes     `json:"coinbase,omitempty"`
 	TxinWitness  []Bytes    `json:"txinwitness,omitempty"`
 	Sequence     uint32     `json:"sequence"`
 }

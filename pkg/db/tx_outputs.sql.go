@@ -7,12 +7,13 @@ package db
 
 import (
 	"context"
+	"database/sql"
 
 	"github.com/spacesprotocol/explorer-backend/pkg/types"
 )
 
 const getTxOutputsByBlockAndTxid = `-- name: GetTxOutputsByBlockAndTxid :many
-SELECT block_hash, txid, index, value, scriptpubkey
+SELECT block_hash, txid, index, value, scriptpubkey, spender_txid, spender_index
 FROM tx_outputs
 WHERE block_hash = $1 and txid = $2
 ORDER BY index
@@ -38,6 +39,8 @@ func (q *Queries) GetTxOutputsByBlockAndTxid(ctx context.Context, arg GetTxOutpu
 			&i.Index,
 			&i.Value,
 			&i.Scriptpubkey,
+			&i.SpenderTxid,
+			&i.SpenderIndex,
 		); err != nil {
 			return nil, err
 		}
@@ -53,7 +56,7 @@ func (q *Queries) GetTxOutputsByBlockAndTxid(ctx context.Context, arg GetTxOutpu
 }
 
 const getTxOutputsByTxid = `-- name: GetTxOutputsByTxid :many
-SELECT block_hash, txid, index, value, scriptpubkey
+SELECT block_hash, txid, index, value, scriptpubkey, spender_txid, spender_index
 FROM tx_outputs
 WHERE txid = $1
 ORDER BY index
@@ -74,6 +77,8 @@ func (q *Queries) GetTxOutputsByTxid(ctx context.Context, txid types.Bytes) ([]T
 			&i.Index,
 			&i.Value,
 			&i.Scriptpubkey,
+			&i.SpenderTxid,
+			&i.SpenderIndex,
 		); err != nil {
 			return nil, err
 		}
@@ -96,9 +101,9 @@ VALUES ($1, $2, $3, $4, $5)
 type InsertTxOutputParams struct {
 	BlockHash    types.Bytes
 	Txid         types.Bytes
-	Index        int32
+	Index        int64
 	Value        int64
-	Scriptpubkey *types.Bytes
+	Scriptpubkey types.Bytes
 }
 
 func (q *Queries) InsertTxOutput(ctx context.Context, arg InsertTxOutputParams) error {
@@ -108,6 +113,29 @@ func (q *Queries) InsertTxOutput(ctx context.Context, arg InsertTxOutputParams) 
 		arg.Index,
 		arg.Value,
 		arg.Scriptpubkey,
+	)
+	return err
+}
+
+const setSpender = `-- name: SetSpender :exec
+UPDATE tx_outputs
+SET spender_txid = $3, spender_index = $4
+WHERE txid = $1 AND index = $2
+`
+
+type SetSpenderParams struct {
+	Txid         types.Bytes
+	Index        int64
+	SpenderTxid  *types.Bytes
+	SpenderIndex sql.NullInt64
+}
+
+func (q *Queries) SetSpender(ctx context.Context, arg SetSpenderParams) error {
+	_, err := q.db.ExecContext(ctx, setSpender,
+		arg.Txid,
+		arg.Index,
+		arg.SpenderTxid,
+		arg.SpenderIndex,
 	)
 	return err
 }

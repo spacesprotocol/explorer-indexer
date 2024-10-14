@@ -95,7 +95,7 @@ func syncBlocks(pg *sql.DB, bc *node.BitcoinClient, sc *node.SpacesClient) error
 			return err
 		}
 
-		sqlTx, err = syncBlock(pg, block, sqlTx)
+		sqlTx, err = syncBlock(block, sqlTx)
 		if err != nil {
 			sqlTx.Rollback()
 			return err
@@ -104,7 +104,7 @@ func syncBlocks(pg *sql.DB, bc *node.BitcoinClient, sc *node.SpacesClient) error
 		if err != nil {
 			return err
 		}
-		sqlTx, err = syncSpacesTransactions(pg, spacesBlock.Transactions, block.Hash, sqlTx)
+		sqlTx, err = syncSpacesTransactions(spacesBlock.Transactions, block.Hash, sqlTx)
 		if err != nil {
 			sqlTx.Rollback()
 			return err
@@ -119,7 +119,8 @@ func syncBlocks(pg *sql.DB, bc *node.BitcoinClient, sc *node.SpacesClient) error
 
 }
 
-// returns the height and blockhash of the last block that is identical in the db and the node
+// detects chain split (reorganization) and
+// returns the height and blockhash of the last block that is identical in the db and in the node
 func getSyncedHead(pg *sql.DB, bc *node.BitcoinClient) (int32, *Bytes, error) {
 	q := db.New(pg)
 	//takes last block from the DB
@@ -144,6 +145,9 @@ func getSyncedHead(pg *sql.DB, bc *node.BitcoinClient) (int32, *Bytes, error) {
 		if bytes.Equal(dbHash, *nodeHash) {
 			//marking all the blocks in the DB after the sycned height as orphans
 			if err := q.SetOrphanAfterHeight(context.Background(), height); err != nil {
+				return -1, nil, err
+			}
+			if err := q.SetNegativeHeightToOrphans(context.Background()); err != nil {
 				return -1, nil, err
 			}
 			return height, &dbHash, nil

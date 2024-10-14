@@ -255,6 +255,15 @@ func (q *Queries) InsertBlock(ctx context.Context, arg InsertBlockParams) error 
 	return err
 }
 
+const setNegativeHeightToOrphans = `-- name: SetNegativeHeightToOrphans :exec
+UPDATE blocks SET height = -2 WHERE orphan = true
+`
+
+func (q *Queries) SetNegativeHeightToOrphans(ctx context.Context) error {
+	_, err := q.db.ExecContext(ctx, setNegativeHeightToOrphans)
+	return err
+}
+
 const setOrphanAfterHeight = `-- name: SetOrphanAfterHeight :exec
 UPDATE blocks SET orphan = true WHERE height > $1
 `

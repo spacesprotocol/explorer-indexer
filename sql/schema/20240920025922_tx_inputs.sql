@@ -9,7 +9,9 @@ CREATE TABLE tx_inputs (
     "sequence" bigint NOT NULL,
     coinbase bytea,
     txinwitness bytea[],
-    PRIMARY KEY (block_hash, txid, index)
+    PRIMARY KEY (block_hash, txid, index),
+    UNIQUE (txid, "index"),
+    CONSTRAINT coinbase_or_not CHECK ((hash_prevout IS NOT NULL AND index_prevout IS NOT NULL) OR coinbase IS NOT NULL)
 );
 
 CREATE INDEX tx_inputs_txid_index ON tx_inputs USING btree (txid);
