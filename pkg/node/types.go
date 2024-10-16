@@ -3,7 +3,6 @@ package node
 import (
 	"encoding/hex"
 	"encoding/json"
-	"log"
 	"math"
 	"strconv"
 	"strings"
@@ -69,16 +68,6 @@ func (tx *Transaction) TxHash() Bytes {
 func (tx *Transaction) Fee() int {
 	return int(math.Round(tx.FloatFee * 1e8))
 }
-
-// type Covenant struct {
-// 	Type          string      `json:"type"`
-// 	BurnIncrement int         `json:"burn_increment"`
-// 	Signature     string      `json:"signature"`
-// 	TotalBurned   int         `json:"total_burned"`
-// 	ClaimHeight   int         `json:"claim_height"`
-// 	ExpireHeight  int         `json:"expire_height"`
-// 	Data          interface{} `json:"data"` // To handle null or any type
-// }
 
 type Vin struct {
 	HashPrevout  *Bytes     `json:"txid,omitempty"`
@@ -179,7 +168,6 @@ type VMetaOut struct {
 }
 
 func (vmeta *VMetaOut) OutpointTxid() Bytes {
-	log.Print("outpoint", vmeta.Outpoint)
 	str := strings.Split(vmeta.Outpoint, ":")
 
 	res, err := hex.DecodeString(str[0])

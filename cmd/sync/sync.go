@@ -15,17 +15,23 @@ import (
 func syncSpacesTransactions(txs []node.Transaction, blockHash Bytes, sqlTx *sql.Tx) (*sql.Tx, error) {
 	q := db.New(sqlTx)
 	for _, transaction := range txs {
-		// tx_ind := int32(tx_index)
 		for vmetaout_index, vmetaout := range transaction.VMetaOut {
 			//TODO throw an error, current behaviour is to skip
 			if len(vmetaout.Outpoint) == 0 {
 				// log.Printf("found bad vmetaout %+v skipping", vmetaout)
-				return sqlTx, fmt.Errorf("found bad vmetaout without outpoint %+v", vmetaout)
-				// continue
+				// return sqlTx, fmt.Errorf("found bad vmetaout without outpoint %+v", vmetaout)
+				continue
 			}
 			vmet := db.InsertVMetaOutParams{}
-			// log.Print(transaction.Txid)
 			copier.Copy(&vmet, &vmetaout)
+			var nullableInt sql.NullInt64
+			if vmetaout.Covenant.BurnIncrement == nil {
+				nullableInt.Valid = false
+			} else {
+				nullableInt.Valid = true
+				nullableInt.Int64 = int64(*vmetaout.Covenant.BurnIncrement)
+			}
+			vmet.BurnIncrement = nullableInt
 			vmet.TxIndex = int64(vmetaout_index)
 			vmet.Txid = transaction.Txid
 			vmet.BlockHash = blockHash

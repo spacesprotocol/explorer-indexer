@@ -33,16 +33,7 @@ func main() {
 		log.Fatalln(err)
 	}
 
-	// err = syncBlocks(pg, &bc, &sc)
-	// if err != nil {
-	// 	log.Fatal(err)
-	// }
-
 	for {
-		// if err := syncMempool(pg, nc); err != nil {
-		// 	log.Println(err)
-		// 	time.Sleep(time.Second)
-		// }
 		if err := syncBlocks(pg, &bc, &sc); err != nil {
 			log.Println(err)
 			time.Sleep(time.Second)
