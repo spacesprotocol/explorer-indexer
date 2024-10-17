@@ -47,6 +47,7 @@ func main() {
 func syncBlocks(pg *sql.DB, bc *node.BitcoinClient, sc *node.SpacesClient) error {
 	var hash *Bytes
 	height, hash, err := getSyncedHead(pg, bc)
+	log.Print(height, hash)
 	if err != nil {
 		return err
 	}

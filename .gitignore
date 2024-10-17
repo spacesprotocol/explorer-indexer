@@ -1,3 +1,4 @@
 pgdata/
 *.dump
 dump.sql
+.env

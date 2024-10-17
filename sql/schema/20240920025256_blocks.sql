@@ -5,7 +5,7 @@ CREATE TABLE blocks (
     "size" bigint NOT NULL,
     stripped_size bigint NOT NULL,
     weight integer NOT NULL,
-    "height" integer UNIQUE NOT NULL CHECK (HEIGHT >= -1),
+    "height" integer NOT NULL CHECK (HEIGHT >= -2),
     "version" integer NOT NULL,
     hash_merkle_root bytea CHECK (LENGTH(hash_merkle_root) = 32) NOT NULL,
     "time" integer NOT NULL,
@@ -17,6 +17,7 @@ CREATE TABLE blocks (
     orphan boolean NOT NULL DEFAULT FALSE
 );
 
+CREATE UNIQUE INDEX unique_height_index ON blocks (height) WHERE height >= 0;
 CREATE INDEX block_height_index ON blocks (height); 
 CREATE EXTENSION pg_trgm;
 
@@ -25,6 +26,7 @@ CREATE EXTENSION pg_trgm;
 
 -- +goose Down
 -- +goose StatementBegin
+DROP INDEX unique_height_index;
 DROP INDEX block_height_index;
 DROP TABLE blocks;
 DROP EXTENSION pg_trgm;

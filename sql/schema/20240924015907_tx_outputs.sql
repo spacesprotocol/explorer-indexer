@@ -8,9 +8,10 @@ CREATE TABLE tx_outputs  (
     scriptPubKey bytea NOT NULL,
     spender_txid bytea,
     spender_index bigint,
+    spender_block_hash bytea,
     PRIMARY KEY (block_hash, txid, "index"),
     FOREIGN KEY (block_hash, txid) REFERENCES transactions (block_hash, txid) ON DELETE CASCADE,
-    CONSTRAINT fk_spender FOREIGN KEY (spender_txid, spender_index) REFERENCES tx_inputs (txid, "index") ON DELETE SET NULL
+    CONSTRAINT fk_spender FOREIGN KEY (spender_block_hash,spender_txid, spender_index) REFERENCES tx_inputs (block_hash, txid, "index") ON DELETE SET NULL
     DEFERRABLE INITIALLY DEFERRED
 );
 
