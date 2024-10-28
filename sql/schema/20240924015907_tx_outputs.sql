@@ -15,12 +15,14 @@ CREATE TABLE tx_outputs  (
     DEFERRABLE INITIALLY DEFERRED
 );
 
-CREATE INDEX idx_tx_outputs_txid_index ON tx_outputs (txid, index);
+CREATE INDEX index_tx_outputs_txid_index ON tx_outputs (txid, index);
+CREATE INDEX index_tx_outputs_scriptpubkey ON tx_outputs (scriptPubKey);
 
 -- +goose StatementEnd
 
 -- +goose Down
 -- +goose StatementBegin
-DROP INDEX idx_tx_outputs_txid_index;
+DROP INDEX index_tx_outputs_txid_index;
+DROP INDEX index_tx_outputs_scriptspubkey;
 DROP TABLE tx_outputs;
 -- +goose StatementEnd
