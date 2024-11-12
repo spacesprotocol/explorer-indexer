@@ -13,7 +13,7 @@ import (
 )
 
 const getTxOutputsByBlockAndTxid = `-- name: GetTxOutputsByBlockAndTxid :many
-SELECT block_hash, txid, index, value, scriptpubkey, spender_txid, spender_index
+SELECT block_hash, txid, index, value, scriptpubkey, spender_txid, spender_index, spender_block_hash
 FROM tx_outputs
 WHERE block_hash = $1 and txid = $2
 ORDER BY index
@@ -41,6 +41,7 @@ func (q *Queries) GetTxOutputsByBlockAndTxid(ctx context.Context, arg GetTxOutpu
 			&i.Scriptpubkey,
 			&i.SpenderTxid,
 			&i.SpenderIndex,
+			&i.SpenderBlockHash,
 		); err != nil {
 			return nil, err
 		}
@@ -56,7 +57,7 @@ func (q *Queries) GetTxOutputsByBlockAndTxid(ctx context.Context, arg GetTxOutpu
 }
 
 const getTxOutputsByTxid = `-- name: GetTxOutputsByTxid :many
-SELECT block_hash, txid, index, value, scriptpubkey, spender_txid, spender_index
+SELECT block_hash, txid, index, value, scriptpubkey, spender_txid, spender_index, spender_block_hash
 FROM tx_outputs
 WHERE txid = $1
 ORDER BY index
@@ -79,6 +80,7 @@ func (q *Queries) GetTxOutputsByTxid(ctx context.Context, txid types.Bytes) ([]T
 			&i.Scriptpubkey,
 			&i.SpenderTxid,
 			&i.SpenderIndex,
+			&i.SpenderBlockHash,
 		); err != nil {
 			return nil, err
 		}

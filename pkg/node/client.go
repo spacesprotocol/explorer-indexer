@@ -39,12 +39,10 @@ func (client *Client) do(ctx context.Context, method string, path string, body i
 		return err
 	}
 	req.SetBasicAuth(client.username, client.password)
-	// log.Printf("%+v\n", req)
 	res, err := client.httpclient.Do(req)
 	if err != nil {
 		return err
 	}
-	// log.Printf("%+v\n", res)
 	defer res.Body.Close()
 
 	return json.NewDecoder(res.Body).Decode(target)
@@ -74,16 +72,14 @@ type RpcResponse struct {
 
 func (client *Client) Rpc(ctx context.Context, method string, params []interface{}, target interface{}) error {
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
-	b := rpcBody{method, params, "2.0", 1337}
-	// log.Printf("%+v", b)
-	// t := rpcResult{}
-	t := RpcResponse{}
-	if err := client.do(ctx, "POST", "", &b, &t); err != nil {
+	body := rpcBody{method, params, "2.0", 1337}
+	response := RpcResponse{}
+	if err := client.do(ctx, "POST", "", &body, &response); err != nil {
 		return err
 	}
-	if t.Error != nil {
-		return fmt.Errorf("spaces node: %v", t.Error.Message)
+	if response.Error != nil {
+		return fmt.Errorf("spaces node: %v", response.Error.Message)
 	}
 
-	return json.Unmarshal(t.Result, target)
+	return json.Unmarshal(response.Result, target)
 }

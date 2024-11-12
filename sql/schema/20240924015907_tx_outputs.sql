@@ -23,6 +23,6 @@ CREATE INDEX index_tx_outputs_scriptpubkey ON tx_outputs (scriptPubKey);
 -- +goose Down
 -- +goose StatementBegin
 DROP INDEX index_tx_outputs_txid_index;
-DROP INDEX index_tx_outputs_scriptspubkey;
+DROP INDEX index_tx_outputs_scriptpubkey;
 DROP TABLE tx_outputs;
 -- +goose StatementEnd

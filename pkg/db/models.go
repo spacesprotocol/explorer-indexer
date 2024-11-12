@@ -18,6 +18,8 @@ const (
 	CovenantActionRESERVE  CovenantAction = "RESERVE"
 	CovenantActionBID      CovenantAction = "BID"
 	CovenantActionTRANSFER CovenantAction = "TRANSFER"
+	CovenantActionROLLOUT  CovenantAction = "ROLLOUT"
+	CovenantActionREVOKE   CovenantAction = "REVOKE"
 )
 
 func (e *CovenantAction) Scan(src interface{}) error {
@@ -72,16 +74,22 @@ type Block struct {
 	Orphan         bool
 }
 
+type Rollout struct {
+	Name   string
+	Bid    sql.NullInt64
+	Height sql.NullInt64
+}
+
 type Transaction struct {
 	Txid      types.Bytes
-	TxHash    *types.Bytes
+	TxHash    types.Bytes
 	Version   int32
 	Size      int64
 	Vsize     int64
 	Weight    int64
 	Locktime  int32
 	Fee       int64
-	BlockHash *types.Bytes
+	BlockHash types.Bytes
 	Index     sql.NullInt32
 }
 
@@ -97,24 +105,30 @@ type TxInput struct {
 }
 
 type TxOutput struct {
-	BlockHash    types.Bytes
-	Txid         types.Bytes
-	Index        int64
-	Value        int64
-	Scriptpubkey types.Bytes
-	SpenderTxid  *types.Bytes
-	SpenderIndex sql.NullInt64
+	BlockHash        types.Bytes
+	Txid             types.Bytes
+	Index            int64
+	Value            int64
+	Scriptpubkey     types.Bytes
+	SpenderTxid      *types.Bytes
+	SpenderIndex     sql.NullInt64
+	SpenderBlockHash *types.Bytes
 }
 
 type Vmetaout struct {
-	BlockHash      types.Bytes
-	Txid           types.Bytes
-	TxIndex        int64
-	OutpointTxid   types.Bytes
-	OutpointIndex  int64
-	Name           string
-	BurnIncrement  sql.NullInt64
-	CovenantAction CovenantAction
-	ClaimHeight    sql.NullInt64
-	ExpireHeight   sql.NullInt64
+	BlockHash     types.Bytes
+	Txid          types.Bytes
+	Identifier    int64
+	Priority      sql.NullInt64
+	Name          sql.NullString
+	Reason        sql.NullString
+	Value         int64
+	Scriptpubkey  types.Bytes
+	Action        NullCovenantAction
+	BurnIncrement sql.NullInt64
+	Signature     *types.Bytes
+	TotalBurned   sql.NullInt64
+	ClaimHeight   sql.NullInt64
+	ExpireHeight  sql.NullInt64
+	ScriptError   sql.NullString
 }

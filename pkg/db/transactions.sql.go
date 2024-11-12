@@ -80,14 +80,14 @@ WHERE transactions.txid = $1
 
 type GetTransactionByTxidRow struct {
 	Txid               types.Bytes
-	TxHash             *types.Bytes
+	TxHash             types.Bytes
 	Version            int32
 	Size               int64
 	Vsize              int64
 	Weight             int64
 	Locktime           int32
 	Fee                int64
-	BlockHash          *types.Bytes
+	BlockHash          types.Bytes
 	Index              sql.NullInt32
 	BlockHeightNotNull int32
 }
@@ -131,14 +131,14 @@ type GetTransactionsByBlockHeightParams struct {
 
 type GetTransactionsByBlockHeightRow struct {
 	Txid               types.Bytes
-	TxHash             *types.Bytes
+	TxHash             types.Bytes
 	Version            int32
 	Size               int64
 	Vsize              int64
 	Weight             int64
 	Locktime           int32
 	Fee                int64
-	BlockHash          *types.Bytes
+	BlockHash          types.Bytes
 	Index              sql.NullInt32
 	BlockHeightNotNull int32
 }
@@ -185,14 +185,14 @@ VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 
 type InsertTransactionParams struct {
 	Txid      types.Bytes
-	TxHash    *types.Bytes
+	TxHash    types.Bytes
 	Version   int32
 	Size      int64
 	Vsize     int64
 	Weight    int64
 	Locktime  int32
 	Fee       int64
-	BlockHash *types.Bytes
+	BlockHash types.Bytes
 	Index     sql.NullInt32
 }
 

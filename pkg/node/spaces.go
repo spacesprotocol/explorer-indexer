@@ -64,9 +64,9 @@ func (client *SpacesClient) GetRollOut(ctx context.Context, number int) (*[]Spac
 	return &spaces, err
 }
 
-func (client *SpacesClient) GetBlockData(ctx context.Context, blockHash string) (*SpacesBlock, error) {
+func (client *SpacesClient) GetBlockMeta(ctx context.Context, blockHash string) (*SpacesBlock, error) {
 	txs := new(SpacesBlock)
-	err := client.Rpc(ctx, "getblockdata", []interface{}{blockHash}, txs)
+	err := client.Rpc(ctx, "getblockmeta", []interface{}{blockHash}, txs)
 	if err != nil {
 		log.Print(err)
 		return nil, err

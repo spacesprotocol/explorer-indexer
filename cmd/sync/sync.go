@@ -3,8 +3,8 @@ package main
 import (
 	"context"
 	"database/sql"
-	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/jinzhu/copier"
 	"github.com/spacesprotocol/explorer-backend/pkg/db"
@@ -12,49 +12,185 @@ import (
 	. "github.com/spacesprotocol/explorer-backend/pkg/types"
 )
 
-func syncSpacesTransactions(txs []node.Transaction, blockHash Bytes, sqlTx *sql.Tx) (*sql.Tx, error) {
+func syncSpacesTransactions(txs []node.MetaTransaction, blockHash Bytes, sqlTx *sql.Tx) (*sql.Tx, error) {
 	q := db.New(sqlTx)
-	for _, transaction := range txs {
-		for vmetaout_index, vmetaout := range transaction.VMetaOut {
-			//TODO throw an error, current behaviour is to skip
-			if len(vmetaout.Outpoint) == 0 {
-				// log.Printf("found bad vmetaout %+v skipping", vmetaout)
-				// return sqlTx, fmt.Errorf("found bad vmetaout without outpoint %+v", vmetaout)
-				continue
+	for _, tx := range txs {
+		for _, create := range tx.Creates {
+			vmet := db.InsertVMetaOutParams{
+				BlockHash:    blockHash,
+				Txid:         tx.TxID,
+				Value:        int64(create.Value),
+				Scriptpubkey: create.ScriptPubKey,
 			}
-			vmet := db.InsertVMetaOutParams{}
-			copier.Copy(&vmet, &vmetaout)
-			var nullableInt sql.NullInt64
-			if vmetaout.Covenant.BurnIncrement == nil {
-				nullableInt.Valid = false
-			} else {
-				nullableInt.Valid = true
-				nullableInt.Int64 = int64(*vmetaout.Covenant.BurnIncrement)
+			if create.Name != "" {
+				if create.Name[0] == '@' {
+					vmet.Name = sql.NullString{
+						String: create.Name[1:],
+						Valid:  true,
+					}
+				} else {
+					vmet.Name = sql.NullString{
+						String: create.Name,
+						Valid:  true,
+					}
+				}
 			}
-			vmet.BurnIncrement = nullableInt
-			vmet.TxIndex = int64(vmetaout_index)
-			vmet.Txid = transaction.Txid
-			vmet.BlockHash = blockHash
-			if len(vmetaout.ResponseName) > 0 && vmetaout.ResponseName[0] == '@' {
-				vmet.Name = vmetaout.ResponseName[1:]
-			} else {
-				return sqlTx, fmt.Errorf("invalid spaces name %s", vmet.Name)
+
+			if create.Covenant.Type != "" {
+				switch strings.ToUpper(create.Covenant.Type) {
+				case "BID":
+					vmet.Action = db.NullCovenantAction{
+						CovenantAction: db.CovenantActionBID,
+						Valid:          true,
+					}
+				case "RESERVE":
+					vmet.Action = db.NullCovenantAction{
+						CovenantAction: db.CovenantActionRESERVE,
+						Valid:          true,
+					}
+				case "TRANSFER":
+					vmet.Action = db.NullCovenantAction{
+						CovenantAction: db.CovenantActionTRANSFER,
+						Valid:          true,
+					}
+				case "ROLLOUT":
+					vmet.Action = db.NullCovenantAction{
+						CovenantAction: db.CovenantActionROLLOUT,
+						Valid:          true,
+					}
+				case "REVOKE":
+					vmet.Action = db.NullCovenantAction{
+						CovenantAction: db.CovenantActionREVOKE,
+						Valid:          true,
+					}
+				default:
+					return sqlTx, fmt.Errorf("unknown covenant action: %s", create.Covenant.Type)
+				}
+
+				if create.Covenant.BurnIncrement != nil {
+					vmet.BurnIncrement = sql.NullInt64{Int64: int64(*create.Covenant.BurnIncrement), Valid: true}
+				}
+
+				if create.Covenant.TotalBurned != nil {
+					vmet.TotalBurned = sql.NullInt64{Int64: int64(*create.Covenant.TotalBurned), Valid: true}
+				}
+
+				if create.Covenant.ClaimHeight != nil {
+					vmet.ClaimHeight = sql.NullInt64{Int64: int64(*create.Covenant.ClaimHeight), Valid: true}
+				}
+
+				if create.Covenant.ExpireHeight != nil {
+					vmet.ExpireHeight = sql.NullInt64{Int64: int64(*create.Covenant.ExpireHeight), Valid: true}
+				}
+
+				if create.Covenant.Signature != nil {
+					vmet.Signature = &create.Covenant.Signature
+				}
 			}
-			switch vmetaout.Covenant.Type {
-			case "bid":
-				vmet.CovenantAction = db.CovenantActionBID
-			case "reserve":
-				vmet.CovenantAction = db.CovenantActionRESERVE
-			case "transfer":
-				vmet.CovenantAction = db.CovenantActionTRANSFER
-			default:
-				return sqlTx, errors.New("Unknown covenant action")
-			}
+
 			if err := q.InsertVMetaOut(context.Background(), vmet); err != nil {
 				return sqlTx, err
 			}
 		}
+
+		for _, update := range tx.Updates {
+			vmet := db.InsertVMetaOutParams{
+				BlockHash:    blockHash,
+				Txid:         tx.TxID,
+				Value:        int64(update.Output.Value),
+				Scriptpubkey: update.Output.ScriptPubKey,
+			}
+
+			if update.Priority != 0 {
+				vmet.Priority = sql.NullInt64{Int64: int64(update.Priority), Valid: true}
+			}
+
+			if update.Reason != "" {
+				vmet.Reason = sql.NullString{update.Reason, true}
+			}
+
+			if update.Output.Name != "" {
+				if update.Output.Name[0] == '@' {
+					vmet.Name = sql.NullString{
+						String: update.Output.Name[1:],
+						Valid:  true,
+					}
+				} else {
+					vmet.Name = sql.NullString{
+						String: update.Output.Name,
+						Valid:  true,
+					}
+				}
+			}
+			switch strings.ToUpper(update.Type) {
+			case "BID":
+				vmet.Action = db.NullCovenantAction{
+					CovenantAction: db.CovenantActionBID,
+					Valid:          true,
+				}
+			case "RESERVE":
+				vmet.Action = db.NullCovenantAction{
+					CovenantAction: db.CovenantActionRESERVE,
+					Valid:          true,
+				}
+			case "TRANSFER":
+				vmet.Action = db.NullCovenantAction{
+					CovenantAction: db.CovenantActionTRANSFER,
+					Valid:          true,
+				}
+			case "ROLLOUT":
+				vmet.Action = db.NullCovenantAction{
+					CovenantAction: db.CovenantActionROLLOUT,
+					Valid:          true,
+				}
+			case "REVOKE":
+				vmet.Action = db.NullCovenantAction{
+					CovenantAction: db.CovenantActionREVOKE,
+					Valid:          true,
+				}
+			default:
+				return sqlTx, fmt.Errorf("unknown covenant action: %s", update.Type)
+			}
+			covenant := update.Output.Covenant
+			if covenant.BurnIncrement != nil {
+				vmet.BurnIncrement = sql.NullInt64{
+					Int64: int64(*covenant.BurnIncrement),
+					Valid: true,
+				}
+			}
+
+			if covenant.TotalBurned != nil {
+				vmet.TotalBurned = sql.NullInt64{
+					Int64: int64(*covenant.TotalBurned),
+					Valid: true,
+				}
+			}
+
+			if covenant.ClaimHeight != nil {
+				vmet.ClaimHeight = sql.NullInt64{
+					Int64: int64(*covenant.ClaimHeight),
+					Valid: true,
+				}
+			}
+
+			if covenant.ExpireHeight != nil {
+				vmet.ExpireHeight = sql.NullInt64{
+					Int64: int64(*covenant.ExpireHeight),
+					Valid: true,
+				}
+			}
+
+			if covenant.Signature != nil {
+				vmet.Signature = &covenant.Signature
+			}
+
+			if err := q.InsertVMetaOut(context.Background(), vmet); err != nil {
+				return sqlTx, err
+			}
+
+		}
 	}
+
 	return sqlTx, nil
 }
 
@@ -78,7 +214,7 @@ func insertTransaction(q *db.Queries, transaction *node.Transaction, blockHash *
 	transactionParams := db.InsertTransactionParams{}
 	copier.Copy(&transactionParams, &transaction)
 	var err error
-	transactionParams.BlockHash = blockHash
+	transactionParams.BlockHash = *blockHash
 	var nullableIndex sql.NullInt32
 	if txIndex == nil {
 		nullableIndex.Valid = false

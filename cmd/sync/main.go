@@ -92,7 +92,7 @@ func syncBlocks(pg *sql.DB, bc *node.BitcoinClient, sc *node.SpacesClient) error
 			sqlTx.Rollback()
 			return err
 		}
-		spacesBlock, err := sc.GetBlockData(context.Background(), string(nextHashString))
+		spacesBlock, err := sc.GetBlockMeta(context.Background(), string(nextHashString))
 		if err != nil {
 			return err
 		}

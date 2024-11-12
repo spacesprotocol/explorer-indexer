@@ -1,11 +1,8 @@
 package node
 
 import (
-	"encoding/hex"
 	"encoding/json"
 	"math"
-	"strconv"
-	"strings"
 
 	. "github.com/spacesprotocol/explorer-backend/pkg/types"
 )
@@ -31,17 +28,16 @@ type Block struct {
 }
 
 type Transaction struct {
-	Txid     Bytes      `json:"txid"`
-	Hash     Bytes      `json:"hash"`
-	Version  int        `json:"version"`
-	Size     int        `json:"size"`
-	VSize    int        `json:"vsize"`
-	Weight   int        `json:"weight"`
-	LockTime uint32     `json:"locktime"`
-	Vin      []Vin      `json:"vin"`
-	Vout     []Vout     `json:"vout"`
-	FloatFee float64    `json:"fee,omitempty"` // Fee is optional
-	VMetaOut []VMetaOut `json:"vmetaout"`
+	Txid     Bytes   `json:"txid"`
+	Hash     Bytes   `json:"hash"`
+	Version  int     `json:"version"`
+	Size     int     `json:"size"`
+	VSize    int     `json:"vsize"`
+	Weight   int     `json:"weight"`
+	LockTime uint32  `json:"locktime"`
+	Vin      []Vin   `json:"vin"`
+	Vout     []Vout  `json:"vout"`
+	FloatFee float64 `json:"fee,omitempty"`
 }
 
 func (t *Transaction) UnmarshalJSON(data []byte) error {
@@ -123,67 +119,55 @@ type Space struct {
 type Covenant struct {
 	Type          string      `json:"type"`
 	BurnIncrement *int        `json:"burn_increment,omitempty"`
-	Signature     *string     `json:"signature,omitempty"`
-	TotalBurned   int         `json:"total_burned"`
+	Signature     Bytes       `json:"signature"`
+	TotalBurned   *int        `json:"total_burned,omitempty"`
 	ClaimHeight   *int        `json:"claim_height,omitempty"`
 	ExpireHeight  *int        `json:"expire_height,omitempty"`
 	Data          interface{} `json:"data,omitempty"`
 }
 
 type SpacesBlock struct {
-	Transactions []Transaction `json:"tx_data"`
+	Transactions []MetaTransaction `json:"tx_meta"`
 }
 
-type SpacesTx struct {
-	Version  int         `json:"version"`
-	TxID     Bytes       `json:"txid"`
-	LockTime int         `json:"lock_time"`
-	Vin      []SpacesVin `json:"vin"`
-	Vout     []Vout      `json:"vout"`
-	VMetaOut []VMetaOut  `json:"vmetaout"`
+type MetaTransaction struct {
+	TxID   Bytes `json:"txid"`
+	Spends []struct {
+		N           int          `json:"n"`
+		ScriptError *ScriptError `json:"script_error,omitempty"`
+	} `json:"spends"`
+	Creates []CreateMeta `json:"creates"`
+	Updates []UpdateMeta `json:"updates"`
 }
 
-// Define the Vin struct for inputs
-type SpacesVin struct {
-	PreviousOutput string   `json:"previous_output"`
-	ScriptSig      string   `json:"script_sig"`
-	Sequence       int      `json:"sequence"`
-	Witness        []string `json:"witness"`
-	ScriptError    *string  `json:"script_error,omitempty"` // Optional field
+type ScriptError struct {
+	Type   string `json:"type"`
+	Name   string `json:"name"`
+	Reason string `json:"reason"`
 }
 
-// Define the Vout struct for outputs
-// type Vout struct {
-// 	Value        int    `json:"value"`
-// 	ScriptPubKey string `json:"script_pubkey"`
-// }
-
-// Define the VMetaOut struct for meta outputs
-type VMetaOut struct {
-	Outpoint     string   `json:"outpoint"`
+type CreateMeta struct {
+	N            int      `json:"n"`
+	Name         string   `json:"name,omitempty"`
+	Covenant     Covenant `json:"covenant,omitempty"`
 	Value        int      `json:"value"`
-	ScriptPubKey string   `json:"script_pubkey"`
-	ResponseName string   `json:"name"`
+	ScriptPubKey Bytes    `json:"script_pubkey"`
+}
+
+type UpdateMeta struct {
+	Type     string     `json:"type"`
+	Priority int        `json:"priority,omitempty"`
+	Output   OutputMeta `json:"output"`
+	Reason   string     `json:"reason,omitempty"`
+}
+
+type OutputMeta struct {
+	TxID         Bytes    `json:"txid"`
+	N            int      `json:"n"`
 	Covenant     Covenant `json:"covenant"`
-}
-
-func (vmeta *VMetaOut) OutpointTxid() Bytes {
-	str := strings.Split(vmeta.Outpoint, ":")
-
-	res, err := hex.DecodeString(str[0])
-	if err != nil {
-		return nil
-	}
-	return res
-}
-
-func (vmeta *VMetaOut) OutpointIndex() int {
-	str := strings.Split(vmeta.Outpoint, ":")
-	res, err := strconv.Atoi(str[1])
-	if err != nil {
-		return -1
-	}
-	return res
+	Value        int      `json:"value"`
+	Name         string   `json:"name,omitempty"`
+	ScriptPubKey Bytes    `json:"script_pubkey"`
 }
 
 func (vout *Vout) Scriptpubkey() *Bytes {

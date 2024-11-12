@@ -7,6 +7,10 @@ import (
 
 type Bytes []byte
 
+func (b Bytes) String() string {
+	return hex.EncodeToString(b)
+}
+
 func (b Bytes) MarshalText() ([]byte, error) {
 	s := hex.EncodeToString([]byte(b))
 	return []byte(s), nil
