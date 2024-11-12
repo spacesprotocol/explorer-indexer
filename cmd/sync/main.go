@@ -16,10 +16,22 @@ import (
 	. "github.com/spacesprotocol/explorer-backend/pkg/types"
 )
 
+var activationBlock = getActivationBlock()
+
+func getActivationBlock() int32 {
+	if height := os.Getenv("ACTIVATION_BLOCK_HEIGHT"); height != "" {
+		if h, err := strconv.ParseInt(height, 10, 32); err == nil {
+			return int32(h)
+		}
+	}
+	return 0
+}
+
 func main() {
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
 	bitcoinClient := node.NewClient(os.Getenv("BITCOIN_NODE_URI"), os.Getenv("BITCOIN_NODE_USER"), os.Getenv("BITCOIN_NODE_PASSWORD"))
 	spacesClient := node.NewClient(os.Getenv("SPACES_NODE_URI"), "test", "test")
+
 	sc := node.SpacesClient{spacesClient}
 	bc := node.BitcoinClient{bitcoinClient}
 
@@ -92,14 +104,16 @@ func syncBlocks(pg *sql.DB, bc *node.BitcoinClient, sc *node.SpacesClient) error
 			sqlTx.Rollback()
 			return err
 		}
-		spacesBlock, err := sc.GetBlockMeta(context.Background(), string(nextHashString))
-		if err != nil {
-			return err
-		}
-		sqlTx, err = syncSpacesTransactions(spacesBlock.Transactions, block.Hash, sqlTx)
-		if err != nil {
-			sqlTx.Rollback()
-			return err
+		if block.Height >= activationBlock {
+			spacesBlock, err := sc.GetBlockMeta(context.Background(), string(nextHashString))
+			if err != nil {
+				return err
+			}
+			sqlTx, err = syncSpacesTransactions(spacesBlock.Transactions, block.Hash, sqlTx)
+			if err != nil {
+				sqlTx.Rollback()
+				return err
+			}
 		}
 		err = sqlTx.Commit()
 		if err != nil {
