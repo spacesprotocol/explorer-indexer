@@ -59,7 +59,7 @@ func main() {
 func syncBlocks(pg *sql.DB, bc *node.BitcoinClient, sc *node.SpacesClient) error {
 	var hash *Bytes
 	height, hash, err := getSyncedHead(pg, bc)
-	log.Print(height, hash)
+	log.Printf("found synced block of height %d and hash %s", height, hash)
 	if err != nil {
 		return err
 	}
@@ -90,10 +90,10 @@ func syncBlocks(pg *sql.DB, bc *node.BitcoinClient, sc *node.SpacesClient) error
 			return err
 		}
 		block, err := bc.GetBlock(context.Background(), string(nextHashString))
-		log.Printf("trying to sync block #%d", block.Height)
 		if err != nil {
 			return err
 		}
+		log.Printf("trying to sync block #%d", block.Height)
 		sqlTx, err := pg.BeginTx(context.Background(), nil)
 		if err != nil {
 			return err

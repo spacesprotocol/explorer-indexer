@@ -1,7 +1,7 @@
 -- +goose Up
 -- +goose StatementBegin
 CREATE TYPE covenant_action
-AS ENUM ('RESERVE', 'BID', 'TRANSFER', 'ROLLOUT', 'REVOKE');
+AS ENUM ('RESERVE', 'BID', 'TRANSFER', 'ROLLOUT', 'REVOKE', 'REJECT');
 
 CREATE SEQUENCE vmetaouts_identifier_seq;
 
@@ -15,8 +15,8 @@ CREATE TABLE vmetaouts (
     
     name TEXT CHECK (LENGTH(name) < 64),
     reason TEXT, -- revoke reason
-    value bigint NOT NULL,
-    scriptPubKey bytea NOT NULL,
+    value bigint,
+    scriptPubKey bytea,
 
     action covenant_action,
     burn_increment bigint,

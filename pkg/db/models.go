@@ -20,6 +20,7 @@ const (
 	CovenantActionTRANSFER CovenantAction = "TRANSFER"
 	CovenantActionROLLOUT  CovenantAction = "ROLLOUT"
 	CovenantActionREVOKE   CovenantAction = "REVOKE"
+	CovenantActionREJECT   CovenantAction = "REJECT"
 )
 
 func (e *CovenantAction) Scan(src interface{}) error {
@@ -122,8 +123,8 @@ type Vmetaout struct {
 	Priority      sql.NullInt64
 	Name          sql.NullString
 	Reason        sql.NullString
-	Value         int64
-	Scriptpubkey  types.Bytes
+	Value         sql.NullInt64
+	Scriptpubkey  *types.Bytes
 	Action        NullCovenantAction
 	BurnIncrement sql.NullInt64
 	Signature     *types.Bytes

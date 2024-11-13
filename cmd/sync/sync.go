@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"log"
 	"strings"
 
 	"github.com/jinzhu/copier"
@@ -19,8 +20,8 @@ func syncSpacesTransactions(txs []node.MetaTransaction, blockHash Bytes, sqlTx *
 			vmet := db.InsertVMetaOutParams{
 				BlockHash:    blockHash,
 				Txid:         tx.TxID,
-				Value:        int64(create.Value),
-				Scriptpubkey: create.ScriptPubKey,
+				Value:        sql.NullInt64{int64(create.Value), true},
+				Scriptpubkey: &create.ScriptPubKey,
 			}
 			if create.Name != "" {
 				if create.Name[0] == '@' {
@@ -97,8 +98,8 @@ func syncSpacesTransactions(txs []node.MetaTransaction, blockHash Bytes, sqlTx *
 			vmet := db.InsertVMetaOutParams{
 				BlockHash:    blockHash,
 				Txid:         tx.TxID,
-				Value:        int64(update.Output.Value),
-				Scriptpubkey: update.Output.ScriptPubKey,
+				Value:        sql.NullInt64{int64(update.Output.Value), true},
+				Scriptpubkey: &update.Output.ScriptPubKey,
 			}
 
 			if update.Priority != 0 {
@@ -182,6 +183,44 @@ func syncSpacesTransactions(txs []node.MetaTransaction, blockHash Bytes, sqlTx *
 
 			if covenant.Signature != nil {
 				vmet.Signature = &covenant.Signature
+			}
+
+			if err := q.InsertVMetaOut(context.Background(), vmet); err != nil {
+				return sqlTx, err
+			}
+
+		}
+
+		for _, spend := range tx.Spends {
+			vmet := db.InsertVMetaOutParams{
+				BlockHash: blockHash,
+				Txid:      tx.TxID,
+			}
+
+			if spend.ScriptError != nil {
+				if spend.ScriptError.Name != "" {
+					if spend.ScriptError.Name[0] == '@' {
+						vmet.Name = sql.NullString{
+							String: spend.ScriptError.Name[1:],
+							Valid:  true,
+						}
+					} else {
+						vmet.Name = sql.NullString{
+							String: spend.ScriptError.Name,
+							Valid:  true,
+						}
+					}
+				}
+
+				if spend.ScriptError.Reason != "" {
+					vmet.ScriptError = sql.NullString{String: spend.ScriptError.Reason, Valid: true}
+				}
+
+				if strings.ToUpper(spend.ScriptError.Type) == "REJECT" {
+					vmet.Action = db.NullCovenantAction{CovenantAction: db.CovenantActionREJECT, Valid: true}
+				} else {
+					log.Fatalf("found unknown type %s", spend.ScriptError.Type)
+				}
 			}
 
 			if err := q.InsertVMetaOut(context.Background(), vmet); err != nil {

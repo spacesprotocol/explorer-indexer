@@ -37,8 +37,8 @@ type InsertVMetaOutParams struct {
 	Txid          types.Bytes
 	Priority      sql.NullInt64
 	Name          sql.NullString
-	Value         int64
-	Scriptpubkey  types.Bytes
+	Value         sql.NullInt64
+	Scriptpubkey  *types.Bytes
 	Action        NullCovenantAction
 	BurnIncrement sql.NullInt64
 	Signature     *types.Bytes
