@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"log"
 	"strings"
 
 	"github.com/jinzhu/copier"
@@ -216,10 +215,12 @@ func syncSpacesTransactions(txs []node.MetaTransaction, blockHash Bytes, sqlTx *
 					vmet.ScriptError = sql.NullString{String: spend.ScriptError.Reason, Valid: true}
 				}
 
+				//TODO handle script error types gracefully
 				if strings.ToUpper(spend.ScriptError.Type) == "REJECT" {
 					vmet.Action = db.NullCovenantAction{CovenantAction: db.CovenantActionREJECT, Valid: true}
 				} else {
-					log.Fatalf("found unknown type %s", spend.ScriptError.Type)
+					vmet.Action = db.NullCovenantAction{CovenantAction: db.CovenantActionREJECT, Valid: true}
+					vmet.ScriptError = sql.NullString{String: spend.ScriptError.Reason + string(spend.ScriptError.Type), Valid: true}
 				}
 			}
 

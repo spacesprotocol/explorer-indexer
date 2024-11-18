@@ -17,9 +17,19 @@ import (
 )
 
 var activationBlock = getActivationBlock()
+var fastSyncBlockHeight = getFastSyncBlockHeight()
 
 func getActivationBlock() int32 {
 	if height := os.Getenv("ACTIVATION_BLOCK_HEIGHT"); height != "" {
+		if h, err := strconv.ParseInt(height, 10, 32); err == nil {
+			return int32(h)
+		}
+	}
+	return 0
+}
+
+func getFastSyncBlockHeight() int32 {
+	if height := os.Getenv("FAST_SYNC_BLOCK_HEIGHT"); height != "" {
 		if h, err := strconv.ParseInt(height, 10, 32); err == nil {
 			return int32(h)
 		}
@@ -64,8 +74,10 @@ func syncBlocks(pg *sql.DB, bc *node.BitcoinClient, sc *node.SpacesClient) error
 		return err
 	}
 	//it means we have no synced blocks
-	if height == -1 {
-		hash, err = bc.GetBlockHash(context.Background(), 0)
+
+	// if height == -1 {
+	if height < fastSyncBlockHeight {
+		hash, err = bc.GetBlockHash(context.Background(), int(fastSyncBlockHeight))
 		if err != nil {
 			return err
 		}
