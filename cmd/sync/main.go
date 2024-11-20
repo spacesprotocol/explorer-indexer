@@ -57,12 +57,6 @@ func main() {
 
 	for {
 
-		if err := syncRollouts(pg, &sc); err != nil {
-			log.Println(err)
-			time.Sleep(time.Second)
-			continue
-		}
-
 		if err := syncBlocks(pg, &bc, &sc); err != nil {
 			log.Println(err)
 			time.Sleep(time.Second)
@@ -100,7 +94,7 @@ func syncRollouts(pg *sql.DB, sc *node.SpacesClient) error {
 			params.Bid = int64(space.Value)
 			params.Target = int64(i)
 			if err := q.InsertRollout(ctx, params); err != nil {
-				log.Printf("Error inserting rollout batch %d: %v", i, err)
+				log.Printf("error inserting rollout batch %d: %v", i, err)
 				sqlTx.Rollback()
 				return err
 			}
@@ -138,6 +132,15 @@ func syncBlocks(pg *sql.DB, bc *node.BitcoinClient, sc *node.SpacesClient) error
 		return err
 	}
 	nextBlockHash := block.NextBlockHash
+
+	if block.Height >= activationBlock {
+		if err := syncRollouts(pg, sc); err != nil {
+			log.Println(err)
+			return err
+			// time.Sleep(time.Second)
+			// continue
+		}
+	}
 
 	//TODO what if the node best block changes during the sync?
 	for nextBlockHash != nil {
