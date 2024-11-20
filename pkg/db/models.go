@@ -77,8 +77,8 @@ type Block struct {
 
 type Rollout struct {
 	Name   string
-	Bid    sql.NullInt64
-	Height sql.NullInt64
+	Bid    int64
+	Target int64
 }
 
 type Transaction struct {

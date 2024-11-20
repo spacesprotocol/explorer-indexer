@@ -1,7 +1,6 @@
 -- +goose Up
 -- +goose StatementBegin
-CREATE TYPE covenant_action
-AS ENUM ('RESERVE', 'BID', 'TRANSFER', 'ROLLOUT', 'REVOKE', 'REJECT');
+CREATE TYPE covenant_action AS ENUM ('RESERVE', 'BID', 'TRANSFER', 'ROLLOUT', 'REVOKE', 'REJECT');
 
 CREATE SEQUENCE vmetaouts_identifier_seq;
 

@@ -12,6 +12,35 @@ import (
 	"github.com/spacesprotocol/explorer-backend/pkg/types"
 )
 
+const deleteRollouts = `-- name: DeleteRollouts :exec
+DELETE FROM rollouts
+`
+
+func (q *Queries) DeleteRollouts(ctx context.Context) error {
+	_, err := q.db.ExecContext(ctx, deleteRollouts)
+	return err
+}
+
+const insertRollout = `-- name: InsertRollout :exec
+INSERT INTO rollouts (
+    name,
+    bid,
+    target
+)
+VALUES ($1, $2, $3)
+`
+
+type InsertRolloutParams struct {
+	Name   string
+	Bid    int64
+	Target int64
+}
+
+func (q *Queries) InsertRollout(ctx context.Context, arg InsertRolloutParams) error {
+	_, err := q.db.ExecContext(ctx, insertRollout, arg.Name, arg.Bid, arg.Target)
+	return err
+}
+
 const insertVMetaOut = `-- name: InsertVMetaOut :exec
 INSERT INTO vmetaouts (
     block_hash,

@@ -108,12 +108,9 @@ type ServerInfo struct {
 	Tip   Tip    `json:"tip"`
 }
 
-type Space struct {
-	Outpoint     string   `json:"outpoint"`
-	Value        int      `json:"value"`
-	ScriptPubKey Bytes    `json:"script_pubkey"`
-	Name         string   `json:"name"`
-	Covenant     Covenant `json:"covenant"`
+type RollOutSpace struct {
+	Name  string `json:"space"`
+	Value int    `json:"value"`
 }
 
 type Covenant struct {

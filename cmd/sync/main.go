@@ -42,8 +42,8 @@ func main() {
 	bitcoinClient := node.NewClient(os.Getenv("BITCOIN_NODE_URI"), os.Getenv("BITCOIN_NODE_USER"), os.Getenv("BITCOIN_NODE_PASSWORD"))
 	spacesClient := node.NewClient(os.Getenv("SPACES_NODE_URI"), "test", "test")
 
-	sc := node.SpacesClient{spacesClient}
-	bc := node.BitcoinClient{bitcoinClient}
+	sc := node.SpacesClient{Client: spacesClient}
+	bc := node.BitcoinClient{Client: bitcoinClient}
 
 	pg, err := sql.Open("postgres", os.Getenv("POSTGRES_URI"))
 	if err != nil {
@@ -56,6 +56,13 @@ func main() {
 	}
 
 	for {
+
+		if err := syncRollouts(pg, &sc); err != nil {
+			log.Println(err)
+			time.Sleep(time.Second)
+			continue
+		}
+
 		if err := syncBlocks(pg, &bc, &sc); err != nil {
 			log.Println(err)
 			time.Sleep(time.Second)
@@ -66,14 +73,52 @@ func main() {
 
 }
 
-func syncBlocks(pg *sql.DB, bc *node.BitcoinClient, sc *node.SpacesClient) error {
-	var hash *Bytes
-	height, hash, err := getSyncedHead(pg, bc)
-	log.Printf("found synced block of height %d and hash %s", height, hash)
+func syncRollouts(pg *sql.DB, sc *node.SpacesClient) error {
+	ctx := context.Background()
+	sqlTx, err := pg.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
-	//it means we have no synced blocks
+	q := db.New(sqlTx)
+	q.DeleteRollouts(ctx)
+	for i := 0; i < 10; i++ {
+		result, err := sc.GetRollOut(ctx, i)
+		if err != nil {
+			log.Printf("error getting rollout for number %d: %v", i, err)
+			sqlTx.Rollback()
+			return err
+		}
+
+		params := db.InsertRolloutParams{}
+		for _, space := range *result {
+			if space.Name[0] == '@' {
+				params.Name = space.Name[1:]
+			} else {
+				sqlTx.Rollback()
+				log.Fatalf("found incorrect space name during rollout sync: %s", space.Name)
+			}
+			params.Bid = int64(space.Value)
+			params.Target = int64(i)
+			if err := q.InsertRollout(ctx, params); err != nil {
+				log.Printf("Error inserting rollout batch %d: %v", i, err)
+				sqlTx.Rollback()
+				return err
+			}
+		}
+	}
+	if err = sqlTx.Commit(); err != nil {
+		return err
+	}
+	return nil
+}
+
+func syncBlocks(pg *sql.DB, bc *node.BitcoinClient, sc *node.SpacesClient) error {
+	var hash *Bytes
+	height, hash, err := getSyncedHead(pg, bc)
+	if err != nil {
+		return err
+	}
+	log.Printf("found synced block of height %d and hash %s", height, hash)
 
 	// if height == -1 {
 	if height < fastSyncBlockHeight {

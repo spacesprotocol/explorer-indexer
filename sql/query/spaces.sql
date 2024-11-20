@@ -17,3 +17,15 @@ INSERT INTO vmetaouts (
 )
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14);
 
+
+-- name: InsertRollout :exec
+INSERT INTO rollouts (
+    name,
+    bid,
+    target
+)
+VALUES ($1, $2, $3);
+
+
+-- name: DeleteRollouts :exec
+DELETE FROM rollouts; 
