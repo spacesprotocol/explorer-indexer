@@ -11,7 +11,7 @@ import (
 
 	"github.com/spacesprotocol/explorer-backend/pkg/db"
 	"github.com/spacesprotocol/explorer-backend/pkg/node"
-	"github.com/spacesprotocol/explorer-backend/pkg/sync"
+	mysync "github.com/spacesprotocol/explorer-backend/pkg/sync"
 
 	_ "github.com/lib/pq"
 	. "github.com/spacesprotocol/explorer-backend/pkg/types"
@@ -38,12 +38,11 @@ func getFastSyncBlockHeight() int32 {
 	return 0
 }
 
+// TODO overwrite already synced blocks after the initial fast sync start
 func main() {
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
 	bitcoinClient := node.NewClient(os.Getenv("BITCOIN_NODE_URI"), os.Getenv("BITCOIN_NODE_USER"), os.Getenv("BITCOIN_NODE_PASSWORD"))
-	spacesClient := node.NewClient(os.Getenv("SPACES_NODE_URI"), "test", "test")
 
-	sc := node.SpacesClient{Client: spacesClient}
 	bc := node.BitcoinClient{Client: bitcoinClient}
 
 	pg, err := sql.Open("postgres", os.Getenv("POSTGRES_URI"))
@@ -58,69 +57,50 @@ func main() {
 
 	for {
 
-		if err := syncBlocks(pg, &bc, &sc); err != nil {
+		if err := syncGapBlocks(pg, &bc); err != nil {
 			log.Println(err)
-			time.Sleep(time.Second)
-			continue
+			time.Sleep(3 * time.Second)
+			break
 		}
 		time.Sleep(time.Duration(updateInterval) * time.Second)
 	}
 
 }
 
-func syncRollouts(pg *sql.DB, sc *node.SpacesClient) error {
-	ctx := context.Background()
-	sqlTx, err := pg.BeginTx(ctx, nil)
-	if err != nil {
-		return err
-	}
-	q := db.New(sqlTx)
-	q.DeleteRollouts(ctx)
-	for i := 0; i < 10; i++ {
-		result, err := sc.GetRollOut(ctx, i)
-		if err != nil {
-			log.Printf("error getting rollout for target day %d: %v", i, err)
-			sqlTx.Rollback()
-			return err
-		}
-
-		params := db.InsertRolloutParams{}
-		for _, space := range *result {
-			if space.Name[0] == '@' {
-				params.Name = space.Name[1:]
-			} else {
-				sqlTx.Rollback()
-				log.Fatalf("found incorrect space name during rollout sync: %s", space.Name)
-			}
-			params.Bid = int64(space.Value)
-			params.Target = int64(i)
-			if err := q.InsertRollout(ctx, params); err != nil {
-				log.Printf("error inserting rollout batch %d: %v", i, err)
-				sqlTx.Rollback()
-				return err
-			}
-		}
-	}
-	if err = sqlTx.Commit(); err != nil {
-		return err
-	}
-	return nil
-}
-
-func syncBlocks(pg *sql.DB, bc *node.BitcoinClient, sc *node.SpacesClient) error {
+func syncGapBlocks(pg *sql.DB, bc *node.BitcoinClient) error {
 	var hash *Bytes
+	var gapEnd int32
+
+	var gapStarted bool
 	height, hash, err := getSyncedHead(pg, bc)
 	if err != nil {
 		return err
 	}
 	log.Printf("found synced block of height %d and hash %s", height, hash)
 
-	// if height == -1 {
-	if height < fastSyncBlockHeight {
-		hash, err = bc.GetBlockHash(context.Background(), int(fastSyncBlockHeight))
-		if err != nil {
-			return err
+	for workingHeight := height; workingHeight >= 0; workingHeight-- {
+		q := db.New(pg)
+		ctx := context.Background()
+		block, err := q.GetBlockByHeight(ctx, workingHeight)
+		if err == nil {
+			if !gapStarted {
+				log.Printf("goin down, got block at height %d, it has hash %s", workingHeight, block.Hash)
+				continue
+			}
+			gapEnd = workingHeight
+			break
 		}
+		if err == sql.ErrNoRows {
+			gapStarted = true
+			log.Printf("found no rows at height %d", workingHeight)
+		}
+	}
+	log.Printf("gap end is on the height of %d", gapEnd)
+	height = gapEnd
+
+	hash, err = bc.GetBlockHash(context.Background(), int(height))
+	if err != nil {
+		return err
 	}
 
 	hashString, err := hash.MarshalText()
@@ -134,16 +114,6 @@ func syncBlocks(pg *sql.DB, bc *node.BitcoinClient, sc *node.SpacesClient) error
 	}
 	nextBlockHash := block.NextBlockHash
 
-	if block.Height >= activationBlock {
-		if err := syncRollouts(pg, sc); err != nil {
-			log.Println(err)
-			return err
-			// time.Sleep(time.Second)
-			// continue
-		}
-	}
-
-	//TODO what if the node best block changes during the sync?
 	for nextBlockHash != nil {
 
 		nextHashString, err := nextBlockHash.MarshalText()
@@ -160,22 +130,22 @@ func syncBlocks(pg *sql.DB, bc *node.BitcoinClient, sc *node.SpacesClient) error
 			return err
 		}
 
-		sqlTx, err = sync.SyncBlock(block, sqlTx)
+		sqlTx, err = mysync.SyncBlock(block, sqlTx)
 		if err != nil {
 			sqlTx.Rollback()
 			return err
 		}
-		if block.Height >= activationBlock {
-			spacesBlock, err := sc.GetBlockMeta(context.Background(), string(nextHashString))
-			if err != nil {
-				return err
-			}
-			sqlTx, err = sync.SyncSpacesTransactions(spacesBlock.Transactions, block.Hash, sqlTx)
-			if err != nil {
-				sqlTx.Rollback()
-				return err
-			}
-		}
+		// if block.Height >= activationBlock {
+		// 	spacesBlock, err := sc.GetBlockMeta(context.Background(), string(nextHashString))
+		// 	if err != nil {
+		// 		return err
+		// 	}
+		// 	sqlTx, err = syncSpacesTransactions(spacesBlock.Transactions, block.Hash, sqlTx)
+		// 	if err != nil {
+		// 		sqlTx.Rollback()
+		// 		return err
+		// 	}
+		// }
 		err = sqlTx.Commit()
 		if err != nil {
 			return err

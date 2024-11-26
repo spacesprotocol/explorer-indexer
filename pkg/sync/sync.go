@@ -1,4 +1,4 @@
-package main
+package sync
 
 import (
 	"context"
@@ -12,7 +12,7 @@ import (
 	. "github.com/spacesprotocol/explorer-backend/pkg/types"
 )
 
-func syncSpacesTransactions(txs []node.MetaTransaction, blockHash Bytes, sqlTx *sql.Tx) (*sql.Tx, error) {
+func SyncSpacesTransactions(txs []node.MetaTransaction, blockHash Bytes, sqlTx *sql.Tx) (*sql.Tx, error) {
 	q := db.New(sqlTx)
 	for _, tx := range txs {
 		for _, create := range tx.Creates {
@@ -234,7 +234,7 @@ func syncSpacesTransactions(txs []node.MetaTransaction, blockHash Bytes, sqlTx *
 	return sqlTx, nil
 }
 
-func syncBlock(block *node.Block, sqlTx *sql.Tx) (*sql.Tx, error) {
+func SyncBlock(block *node.Block, sqlTx *sql.Tx) (*sql.Tx, error) {
 	q := db.New(sqlTx)
 	blockParams := db.InsertBlockParams{}
 	copier.Copy(&blockParams, &block)
