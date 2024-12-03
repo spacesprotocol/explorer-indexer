@@ -59,8 +59,6 @@ func main() {
 
 		if err := syncGapBlocks(pg, &bc); err != nil {
 			log.Println(err)
-			time.Sleep(3 * time.Second)
-			break
 		}
 		time.Sleep(time.Duration(updateInterval) * time.Second)
 	}

@@ -61,7 +61,6 @@ func main() {
 		if err := syncBlocks(pg, &bc, &sc); err != nil {
 			log.Println(err)
 			time.Sleep(time.Second)
-			continue
 		}
 		time.Sleep(time.Duration(updateInterval) * time.Second)
 	}
@@ -74,13 +73,20 @@ func syncRollouts(pg *sql.DB, sc *node.SpacesClient) error {
 	if err != nil {
 		return err
 	}
+	defer func() {
+		err := sqlTx.Rollback()
+		if err != nil && err != sql.ErrTxDone {
+			log.Fatalf("rollouts sync: cannot rollback sql transaction: %s", err)
+		}
+	}()
+
 	q := db.New(sqlTx)
-	q.DeleteRollouts(ctx)
+	if err = q.DeleteRollouts(ctx); err != nil {
+		return err
+	}
 	for i := 0; i < 10; i++ {
 		result, err := sc.GetRollOut(ctx, i)
 		if err != nil {
-			log.Printf("error getting rollout for target day %d: %v", i, err)
-			sqlTx.Rollback()
 			return err
 		}
 
@@ -89,14 +95,12 @@ func syncRollouts(pg *sql.DB, sc *node.SpacesClient) error {
 			if space.Name[0] == '@' {
 				params.Name = space.Name[1:]
 			} else {
-				sqlTx.Rollback()
 				log.Fatalf("found incorrect space name during rollout sync: %s", space.Name)
 			}
 			params.Bid = int64(space.Value)
 			params.Target = int64(i)
 			if err := q.InsertRollout(ctx, params); err != nil {
 				log.Printf("error inserting rollout batch %d: %v", i, err)
-				sqlTx.Rollback()
 				return err
 			}
 		}
@@ -109,7 +113,7 @@ func syncRollouts(pg *sql.DB, sc *node.SpacesClient) error {
 
 func syncBlocks(pg *sql.DB, bc *node.BitcoinClient, sc *node.SpacesClient) error {
 	var hash *Bytes
-	height, hash, err := getSyncedHead(pg, bc)
+	height, hash, err := getSyncedHead(pg, bc) //get the last synced height and hash
 	if err != nil {
 		return err
 	}
@@ -159,10 +163,15 @@ func syncBlocks(pg *sql.DB, bc *node.BitcoinClient, sc *node.SpacesClient) error
 		if err != nil {
 			return err
 		}
+		defer func() {
+			err := sqlTx.Rollback()
+			if err != nil && err != sql.ErrTxDone {
+				log.Fatalf("block sync: cannot rollback sql transaction: %s", err)
+			}
+		}()
 
 		sqlTx, err = sync.SyncBlock(block, sqlTx)
 		if err != nil {
-			sqlTx.Rollback()
 			return err
 		}
 		if block.Height >= activationBlock {
@@ -172,7 +181,6 @@ func syncBlocks(pg *sql.DB, bc *node.BitcoinClient, sc *node.SpacesClient) error
 			}
 			sqlTx, err = sync.SyncSpacesTransactions(spacesBlock.Transactions, block.Hash, sqlTx)
 			if err != nil {
-				sqlTx.Rollback()
 				return err
 			}
 		}

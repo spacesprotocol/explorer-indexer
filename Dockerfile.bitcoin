@@ -1,0 +1,14 @@
+FROM debian:bullseye-slim
+
+RUN apt-get update && \
+    apt-get install -y wget && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/* && \
+    wget https://bitcoincore.org/bin/bitcoin-core-28.0/bitcoin-28.0-x86_64-linux-gnu.tar.gz && \
+    tar xzf bitcoin-28.0-x86_64-linux-gnu.tar.gz && \
+    install -m 0755 -o root -g root -t /usr/local/bin bitcoin-28.0/bin/* && \
+    rm -rf bitcoin-28.0*
+
+EXPOSE 18443 18444
+
+# No default CMD - will be provided by docker-compose
