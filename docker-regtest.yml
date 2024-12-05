@@ -73,14 +73,6 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.spaced
-    command:
-      - spaced
-      - --block-index
-      - --chain=regtest
-      - --bitcoin-rpc-user=bitcoin
-      - --bitcoin-rpc-password=bitcoin
-      - --bitcoin-rpc-url=http://bitcoin:18443
-      - --rpc-bind=0.0.0.0
     ports:
       - "7218:7218" 
     volumes:
@@ -104,3 +96,4 @@ services:
       - db
       - bitcoin
       - spaced
+      - goose

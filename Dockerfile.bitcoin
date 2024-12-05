@@ -1,7 +1,6 @@
 FROM debian:bullseye-slim
 
-RUN apt-get update && \
-    apt-get install -y wget && \
+RUN apt-get install -y wget && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/* && \
     wget https://bitcoincore.org/bin/bitcoin-core-28.0/bitcoin-28.0-x86_64-linux-gnu.tar.gz && \

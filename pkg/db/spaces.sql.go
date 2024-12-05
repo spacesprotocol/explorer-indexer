@@ -7,8 +7,8 @@ package db
 
 import (
 	"context"
-	"database/sql"
 
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/spacesprotocol/explorer-backend/pkg/types"
 )
 
@@ -17,7 +17,7 @@ DELETE FROM rollouts
 `
 
 func (q *Queries) DeleteRollouts(ctx context.Context) error {
-	_, err := q.db.ExecContext(ctx, deleteRollouts)
+	_, err := q.db.Exec(ctx, deleteRollouts)
 	return err
 }
 
@@ -37,7 +37,7 @@ type InsertRolloutParams struct {
 }
 
 func (q *Queries) InsertRollout(ctx context.Context, arg InsertRolloutParams) error {
-	_, err := q.db.ExecContext(ctx, insertRollout, arg.Name, arg.Bid, arg.Target)
+	_, err := q.db.Exec(ctx, insertRollout, arg.Name, arg.Bid, arg.Target)
 	return err
 }
 
@@ -64,22 +64,22 @@ VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
 type InsertVMetaOutParams struct {
 	BlockHash     types.Bytes
 	Txid          types.Bytes
-	Priority      sql.NullInt64
-	Name          sql.NullString
-	Value         sql.NullInt64
+	Priority      pgtype.Int8
+	Name          pgtype.Text
+	Value         pgtype.Int8
 	Scriptpubkey  *types.Bytes
 	Action        NullCovenantAction
-	BurnIncrement sql.NullInt64
+	BurnIncrement pgtype.Int8
 	Signature     *types.Bytes
-	TotalBurned   sql.NullInt64
-	ClaimHeight   sql.NullInt64
-	ExpireHeight  sql.NullInt64
-	ScriptError   sql.NullString
-	Reason        sql.NullString
+	TotalBurned   pgtype.Int8
+	ClaimHeight   pgtype.Int8
+	ExpireHeight  pgtype.Int8
+	ScriptError   pgtype.Text
+	Reason        pgtype.Text
 }
 
 func (q *Queries) InsertVMetaOut(ctx context.Context, arg InsertVMetaOutParams) error {
-	_, err := q.db.ExecContext(ctx, insertVMetaOut,
+	_, err := q.db.Exec(ctx, insertVMetaOut,
 		arg.BlockHash,
 		arg.Txid,
 		arg.Priority,

@@ -2,9 +2,13 @@ package sync
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
+	"log"
 	"strings"
+	"time"
+
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 
 	"github.com/jinzhu/copier"
 	"github.com/spacesprotocol/explorer-backend/pkg/db"
@@ -12,24 +16,76 @@ import (
 	. "github.com/spacesprotocol/explorer-backend/pkg/types"
 )
 
-func SyncSpacesTransactions(txs []node.MetaTransaction, blockHash Bytes, sqlTx *sql.Tx) (*sql.Tx, error) {
+type AggregateStats struct {
+	StartHeight  int32
+	EndHeight    int32
+	TotalTime    time.Duration
+	TotalBlocks  int
+	TotalTx      int
+	TotalInputs  int
+	TotalOutputs int
+	StartTime    time.Time
+}
+
+var (
+	currentAggregation *AggregateStats
+	aggregationSize    = 100 // Size of batch for aggregation
+)
+
+func logAggregateStats(stats *AggregateStats) {
+	timePerBlock := float64(stats.TotalTime.Milliseconds()) / float64(stats.TotalBlocks)
+	timePerTx := float64(stats.TotalTime.Milliseconds()) / float64(stats.TotalTx)
+	timePerIO := float64(stats.TotalTime.Milliseconds()) / float64(stats.TotalInputs+stats.TotalOutputs)
+
+	log.Printf("\n=== Aggregate Statistics for blocks %d-%d ===", stats.StartHeight, stats.EndHeight)
+	log.Printf("Total time: %v", stats.TotalTime)
+	log.Printf("Total blocks: %d (%.2f ms/block)", stats.TotalBlocks, timePerBlock)
+	log.Printf("Total transactions: %d (%.2f ms/tx)", stats.TotalTx, timePerTx)
+	log.Printf("Total I/O operations: %d (%.2f ms/op)",
+		stats.TotalInputs+stats.TotalOutputs, timePerIO)
+}
+
+func updateAggregateStats(height int32, txCount, inputCount, outputCount int) {
+	if currentAggregation == nil {
+		currentAggregation = &AggregateStats{
+			StartHeight: height,
+			StartTime:   time.Now(),
+		}
+	}
+
+	// Update counters
+	currentAggregation.TotalBlocks++
+	currentAggregation.TotalTx += txCount
+	currentAggregation.TotalInputs += inputCount
+	currentAggregation.TotalOutputs += outputCount
+
+	// If we've reached the batch size, log and reset
+	if currentAggregation.TotalBlocks >= aggregationSize {
+		currentAggregation.EndHeight = height
+		currentAggregation.TotalTime = time.Since(currentAggregation.StartTime)
+		logAggregateStats(currentAggregation)
+		currentAggregation = nil
+	}
+}
+
+func SyncSpacesTransactions(txs []node.MetaTransaction, blockHash Bytes, sqlTx pgx.Tx) (pgx.Tx, error) {
 	q := db.New(sqlTx)
 	for _, tx := range txs {
 		for _, create := range tx.Creates {
 			vmet := db.InsertVMetaOutParams{
 				BlockHash:    blockHash,
 				Txid:         tx.TxID,
-				Value:        sql.NullInt64{int64(create.Value), true},
+				Value:        pgtype.Int8{Int64: int64(create.Value), Valid: true},
 				Scriptpubkey: &create.ScriptPubKey,
 			}
 			if create.Name != "" {
 				if create.Name[0] == '@' {
-					vmet.Name = sql.NullString{
+					vmet.Name = pgtype.Text{
 						String: create.Name[1:],
 						Valid:  true,
 					}
 				} else {
-					vmet.Name = sql.NullString{
+					vmet.Name = pgtype.Text{
 						String: create.Name,
 						Valid:  true,
 					}
@@ -68,19 +124,19 @@ func SyncSpacesTransactions(txs []node.MetaTransaction, blockHash Bytes, sqlTx *
 				}
 
 				if create.Covenant.BurnIncrement != nil {
-					vmet.BurnIncrement = sql.NullInt64{Int64: int64(*create.Covenant.BurnIncrement), Valid: true}
+					vmet.BurnIncrement = pgtype.Int8{Int64: int64(*create.Covenant.BurnIncrement), Valid: true}
 				}
 
 				if create.Covenant.TotalBurned != nil {
-					vmet.TotalBurned = sql.NullInt64{Int64: int64(*create.Covenant.TotalBurned), Valid: true}
+					vmet.TotalBurned = pgtype.Int8{Int64: int64(*create.Covenant.TotalBurned), Valid: true}
 				}
 
 				if create.Covenant.ClaimHeight != nil {
-					vmet.ClaimHeight = sql.NullInt64{Int64: int64(*create.Covenant.ClaimHeight), Valid: true}
+					vmet.ClaimHeight = pgtype.Int8{Int64: int64(*create.Covenant.ClaimHeight), Valid: true}
 				}
 
 				if create.Covenant.ExpireHeight != nil {
-					vmet.ExpireHeight = sql.NullInt64{Int64: int64(*create.Covenant.ExpireHeight), Valid: true}
+					vmet.ExpireHeight = pgtype.Int8{Int64: int64(*create.Covenant.ExpireHeight), Valid: true}
 				}
 
 				if create.Covenant.Signature != nil {
@@ -97,26 +153,26 @@ func SyncSpacesTransactions(txs []node.MetaTransaction, blockHash Bytes, sqlTx *
 			vmet := db.InsertVMetaOutParams{
 				BlockHash:    blockHash,
 				Txid:         tx.TxID,
-				Value:        sql.NullInt64{int64(update.Output.Value), true},
+				Value:        pgtype.Int8{Int64: int64(update.Output.Value), Valid: true},
 				Scriptpubkey: &update.Output.ScriptPubKey,
 			}
 
 			if update.Priority != 0 {
-				vmet.Priority = sql.NullInt64{Int64: int64(update.Priority), Valid: true}
+				vmet.Priority = pgtype.Int8{Int64: int64(update.Priority), Valid: true}
 			}
 
 			if update.Reason != "" {
-				vmet.Reason = sql.NullString{update.Reason, true}
+				vmet.Reason = pgtype.Text{String: update.Reason, Valid: true}
 			}
 
 			if update.Output.Name != "" {
 				if update.Output.Name[0] == '@' {
-					vmet.Name = sql.NullString{
+					vmet.Name = pgtype.Text{
 						String: update.Output.Name[1:],
 						Valid:  true,
 					}
 				} else {
-					vmet.Name = sql.NullString{
+					vmet.Name = pgtype.Text{
 						String: update.Output.Name,
 						Valid:  true,
 					}
@@ -153,28 +209,28 @@ func SyncSpacesTransactions(txs []node.MetaTransaction, blockHash Bytes, sqlTx *
 			}
 			covenant := update.Output.Covenant
 			if covenant.BurnIncrement != nil {
-				vmet.BurnIncrement = sql.NullInt64{
+				vmet.BurnIncrement = pgtype.Int8{
 					Int64: int64(*covenant.BurnIncrement),
 					Valid: true,
 				}
 			}
 
 			if covenant.TotalBurned != nil {
-				vmet.TotalBurned = sql.NullInt64{
+				vmet.TotalBurned = pgtype.Int8{
 					Int64: int64(*covenant.TotalBurned),
 					Valid: true,
 				}
 			}
 
 			if covenant.ClaimHeight != nil {
-				vmet.ClaimHeight = sql.NullInt64{
+				vmet.ClaimHeight = pgtype.Int8{
 					Int64: int64(*covenant.ClaimHeight),
 					Valid: true,
 				}
 			}
 
 			if covenant.ExpireHeight != nil {
-				vmet.ExpireHeight = sql.NullInt64{
+				vmet.ExpireHeight = pgtype.Int8{
 					Int64: int64(*covenant.ExpireHeight),
 					Valid: true,
 				}
@@ -199,12 +255,12 @@ func SyncSpacesTransactions(txs []node.MetaTransaction, blockHash Bytes, sqlTx *
 			if spend.ScriptError != nil {
 				if spend.ScriptError.Name != "" {
 					if spend.ScriptError.Name[0] == '@' {
-						vmet.Name = sql.NullString{
+						vmet.Name = pgtype.Text{
 							String: spend.ScriptError.Name[1:],
 							Valid:  true,
 						}
 					} else {
-						vmet.Name = sql.NullString{
+						vmet.Name = pgtype.Text{
 							String: spend.ScriptError.Name,
 							Valid:  true,
 						}
@@ -212,7 +268,7 @@ func SyncSpacesTransactions(txs []node.MetaTransaction, blockHash Bytes, sqlTx *
 				}
 
 				if spend.ScriptError.Reason != "" {
-					vmet.ScriptError = sql.NullString{String: spend.ScriptError.Reason, Valid: true}
+					vmet.ScriptError = pgtype.Text{String: spend.ScriptError.Reason, Valid: true}
 				}
 
 				//TODO handle script error types gracefully
@@ -220,7 +276,7 @@ func SyncSpacesTransactions(txs []node.MetaTransaction, blockHash Bytes, sqlTx *
 					vmet.Action = db.NullCovenantAction{CovenantAction: db.CovenantActionREJECT, Valid: true}
 				} else {
 					vmet.Action = db.NullCovenantAction{CovenantAction: db.CovenantActionREJECT, Valid: true}
-					vmet.ScriptError = sql.NullString{String: spend.ScriptError.Reason + string(spend.ScriptError.Type), Valid: true}
+					vmet.ScriptError = pgtype.Text{String: spend.ScriptError.Reason + string(spend.ScriptError.Type), Valid: true}
 				}
 			}
 
@@ -234,28 +290,121 @@ func SyncSpacesTransactions(txs []node.MetaTransaction, blockHash Bytes, sqlTx *
 	return sqlTx, nil
 }
 
-func SyncBlock(block *node.Block, sqlTx *sql.Tx) (*sql.Tx, error) {
-	q := db.New(sqlTx)
+func SyncBlock(block *node.Block, tx pgx.Tx) (pgx.Tx, error) {
+	q := db.New(tx)
 	blockParams := db.InsertBlockParams{}
 	copier.Copy(&blockParams, &block)
 	if err := q.InsertBlock(context.Background(), blockParams); err != nil {
-		return sqlTx, err
+		return tx, err
 	}
+	txCount := 0
+	inputCount := 0
+	outputCount := 0
 	for tx_index, transaction := range block.Transactions {
 		ind := int32(tx_index)
 		if err := insertTransaction(q, &transaction, &blockParams.Hash, &ind); err != nil {
-			return sqlTx, err
+			return tx, err
 		}
+
+		// Collect metrics
+		txCount++
+		inputCount += len(transaction.Vin)
+		outputCount += len(transaction.Vout)
 	}
-	return sqlTx, nil
+	updateAggregateStats(block.Height, txCount, inputCount, outputCount)
+	return tx, nil
 }
 
 func insertTransaction(q *db.Queries, transaction *node.Transaction, blockHash *Bytes, txIndex *int32) error {
 	transactionParams := db.InsertTransactionParams{}
 	copier.Copy(&transactionParams, &transaction)
+	transactionParams.BlockHash = *blockHash
+	var nullableIndex pgtype.Int4
+	if txIndex == nil {
+		nullableIndex.Valid = false
+	} else {
+		nullableIndex.Valid = true
+		nullableIndex.Int32 = *txIndex
+	}
+	transactionParams.Index = nullableIndex
+
+	// Insert the transaction first
+	if err := q.InsertTransaction(context.Background(), transactionParams); err != nil {
+		return err
+	}
+
+	// Prepare batch inputs
+	inputs := make([]db.InsertBatchTxInputsParams, 0, len(transaction.Vin))
+	var spenderUpdates []db.SetSpenderParams
+
+	for input_index, txInput := range transaction.Vin {
+		inputParam := db.InsertBatchTxInputsParams{
+			BlockHash:    *blockHash,
+			Txid:         transactionParams.Txid,
+			Index:        int64(input_index),
+			HashPrevout:  txInput.HashPrevout,
+			IndexPrevout: int64(txInput.IndexPrevout),
+			Sequence:     int64(txInput.Sequence),
+			Coinbase:     txInput.Coinbase,
+		}
+		inputs = append(inputs, inputParam)
+
+		if txInput.Coinbase == nil {
+			var nullableIndex64 pgtype.Int8
+			nullableIndex64.Valid = true
+			nullableIndex64.Int64 = int64(input_index)
+			spenderUpdates = append(spenderUpdates, db.SetSpenderParams{
+				Txid:         *(txInput.HashPrevout),
+				Index:        int64(txInput.IndexPrevout),
+				SpenderTxid:  &transactionParams.Txid,
+				SpenderIndex: nullableIndex64,
+			})
+		}
+	}
+
+	// Prepare batch outputs
+	outputs := make([]db.InsertBatchTxOutputsParams, 0, len(transaction.Vout))
+	for output_index, txOutput := range transaction.Vout {
+		outputParam := db.InsertBatchTxOutputsParams{
+			BlockHash:    *blockHash,
+			Txid:         transactionParams.Txid,
+			Index:        int64(output_index),
+			Value:        int64(txOutput.Value()),
+			Scriptpubkey: *txOutput.Scriptpubkey(),
+		}
+		outputs = append(outputs, outputParam)
+	}
+
+	// Batch insert inputs
+	if len(inputs) > 0 {
+		if _, err := q.InsertBatchTxInputs(context.Background(), inputs); err != nil {
+			return fmt.Errorf("batch insert inputs: %w", err)
+		}
+	}
+
+	// Batch insert outputs
+	if len(outputs) > 0 {
+		if _, err := q.InsertBatchTxOutputs(context.Background(), outputs); err != nil {
+			return fmt.Errorf("batch insert outputs: %w", err)
+		}
+	}
+
+	// Process spender updates
+	for _, update := range spenderUpdates {
+		if err := q.SetSpender(context.Background(), update); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func insertTransaction2(q *db.Queries, transaction *node.Transaction, blockHash *Bytes, txIndex *int32) error {
+	transactionParams := db.InsertTransactionParams{}
+	copier.Copy(&transactionParams, &transaction)
 	var err error
 	transactionParams.BlockHash = *blockHash
-	var nullableIndex sql.NullInt32
+	var nullableIndex pgtype.Int4
 	if txIndex == nil {
 		nullableIndex.Valid = false
 	} else {
@@ -278,7 +427,7 @@ func insertTransaction(q *db.Queries, transaction *node.Transaction, blockHash *
 		}
 
 		if txInputParams.Coinbase == nil {
-			var nullableIndex64 sql.NullInt64
+			var nullableIndex64 pgtype.Int8
 			nullableIndex64.Valid = true
 			nullableIndex64.Int64 = int64(input_index)
 			setSpenderParams := db.SetSpenderParams{

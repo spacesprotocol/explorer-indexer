@@ -7,8 +7,8 @@ package db
 
 import (
 	"context"
-	"database/sql"
 
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/spacesprotocol/explorer-backend/pkg/types"
 )
 
@@ -25,7 +25,7 @@ type GetTxOutputsByBlockAndTxidParams struct {
 }
 
 func (q *Queries) GetTxOutputsByBlockAndTxid(ctx context.Context, arg GetTxOutputsByBlockAndTxidParams) ([]TxOutput, error) {
-	rows, err := q.db.QueryContext(ctx, getTxOutputsByBlockAndTxid, arg.BlockHash, arg.Txid)
+	rows, err := q.db.Query(ctx, getTxOutputsByBlockAndTxid, arg.BlockHash, arg.Txid)
 	if err != nil {
 		return nil, err
 	}
@@ -46,9 +46,6 @@ func (q *Queries) GetTxOutputsByBlockAndTxid(ctx context.Context, arg GetTxOutpu
 			return nil, err
 		}
 		items = append(items, i)
-	}
-	if err := rows.Close(); err != nil {
-		return nil, err
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
@@ -64,7 +61,7 @@ ORDER BY index
 `
 
 func (q *Queries) GetTxOutputsByTxid(ctx context.Context, txid types.Bytes) ([]TxOutput, error) {
-	rows, err := q.db.QueryContext(ctx, getTxOutputsByTxid, txid)
+	rows, err := q.db.Query(ctx, getTxOutputsByTxid, txid)
 	if err != nil {
 		return nil, err
 	}
@@ -86,13 +83,18 @@ func (q *Queries) GetTxOutputsByTxid(ctx context.Context, txid types.Bytes) ([]T
 		}
 		items = append(items, i)
 	}
-	if err := rows.Close(); err != nil {
-		return nil, err
-	}
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
 	return items, nil
+}
+
+type InsertBatchTxOutputsParams struct {
+	BlockHash    types.Bytes
+	Txid         types.Bytes
+	Index        int64
+	Value        int64
+	Scriptpubkey types.Bytes
 }
 
 const insertTxOutput = `-- name: InsertTxOutput :exec
@@ -109,7 +111,7 @@ type InsertTxOutputParams struct {
 }
 
 func (q *Queries) InsertTxOutput(ctx context.Context, arg InsertTxOutputParams) error {
-	_, err := q.db.ExecContext(ctx, insertTxOutput,
+	_, err := q.db.Exec(ctx, insertTxOutput,
 		arg.BlockHash,
 		arg.Txid,
 		arg.Index,
@@ -129,11 +131,11 @@ type SetSpenderParams struct {
 	Txid         types.Bytes
 	Index        int64
 	SpenderTxid  *types.Bytes
-	SpenderIndex sql.NullInt64
+	SpenderIndex pgtype.Int8
 }
 
 func (q *Queries) SetSpender(ctx context.Context, arg SetSpenderParams) error {
-	_, err := q.db.ExecContext(ctx, setSpender,
+	_, err := q.db.Exec(ctx, setSpender,
 		arg.Txid,
 		arg.Index,
 		arg.SpenderTxid,

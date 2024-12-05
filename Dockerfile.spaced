@@ -1,21 +1,24 @@
 FROM debian:bookworm-slim
 
-RUN apt-get update && \
-    apt-get install -y wget curl && \
+RUN apt-get install -y wget postgresql-client curl && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
-# Download and extract the spaced binary with correct path
-RUN wget https://github.com/spacesprotocol/spaces/releases/download/v0.0.5/spaces-v0.0.5-linux-x86_64.tar.gz && \
-    tar xzf spaces-v0.0.5-linux-x86_64.tar.gz && \
-    mv spaces-v0.0.5-linux-x86_64/spaced /usr/local/bin/ && \
-    mv spaces-v0.0.5-linux-x86_64/space-cli /usr/local/bin/ && \
+# Download and extract the spaced binary
+RUN wget https://github.com/spacesprotocol/spaces/releases/download/v0.0.5-rc1/spaces-v0.0.5-rc1-linux-x86_64.tar.gz && \
+    tar xzf spaces-v0.0.5-rc1-linux-x86_64.tar.gz && \
+    mv spaces-v0.0.5-rc1-linux-x86_64/spaced /usr/local/bin/ && \
+    mv spaces-v0.0.5-rc1-linux-x86_64/space-cli /usr/local/bin/ && \
     chmod +x /usr/local/bin/spaced && \
     chmod +x /usr/local/bin/space-cli && \
-    rm -rf spaces-v0.0.5-linux-x86_64*
+    rm -rf spaces-v0.0.5-rc1-linux-x86_64*
+
+# Copy initialization script
+COPY init-spaced.sh /app/init-spaced.sh
+RUN chmod +x /app/init-spaced.sh
 
 EXPOSE 7218
 
-CMD ["spaced"]
+ENTRYPOINT ["/app/init-spaced.sh"]

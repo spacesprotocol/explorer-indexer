@@ -17,7 +17,7 @@ WHERE height > $1
 `
 
 func (q *Queries) DeleteBlocksAfterHeight(ctx context.Context, height int32) error {
-	_, err := q.db.ExecContext(ctx, deleteBlocksAfterHeight, height)
+	_, err := q.db.Exec(ctx, deleteBlocksAfterHeight, height)
 	return err
 }
 
@@ -48,7 +48,7 @@ type GetBlockByHashRow struct {
 }
 
 func (q *Queries) GetBlockByHash(ctx context.Context, hash types.Bytes) (GetBlockByHashRow, error) {
-	row := q.db.QueryRowContext(ctx, getBlockByHash, hash)
+	row := q.db.QueryRow(ctx, getBlockByHash, hash)
 	var i GetBlockByHashRow
 	err := row.Scan(
 		&i.Hash,
@@ -97,7 +97,7 @@ type GetBlockByHeightRow struct {
 }
 
 func (q *Queries) GetBlockByHeight(ctx context.Context, height int32) (GetBlockByHeightRow, error) {
-	row := q.db.QueryRowContext(ctx, getBlockByHeight, height)
+	row := q.db.QueryRow(ctx, getBlockByHeight, height)
 	var i GetBlockByHeightRow
 	err := row.Scan(
 		&i.Hash,
@@ -126,7 +126,7 @@ WHERE height = $1
 `
 
 func (q *Queries) GetBlockHashByHeight(ctx context.Context, height int32) (types.Bytes, error) {
-	row := q.db.QueryRowContext(ctx, getBlockHashByHeight, height)
+	row := q.db.QueryRow(ctx, getBlockHashByHeight, height)
 	var hash types.Bytes
 	err := row.Scan(&hash)
 	return hash, err
@@ -165,7 +165,7 @@ type GetBlocksRow struct {
 }
 
 func (q *Queries) GetBlocks(ctx context.Context, arg GetBlocksParams) ([]GetBlocksRow, error) {
-	rows, err := q.db.QueryContext(ctx, getBlocks, arg.Limit, arg.Offset)
+	rows, err := q.db.Query(ctx, getBlocks, arg.Limit, arg.Offset)
 	if err != nil {
 		return nil, err
 	}
@@ -194,9 +194,6 @@ func (q *Queries) GetBlocks(ctx context.Context, arg GetBlocksParams) ([]GetBloc
 		}
 		items = append(items, i)
 	}
-	if err := rows.Close(); err != nil {
-		return nil, err
-	}
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
@@ -209,7 +206,7 @@ FROM blocks
 `
 
 func (q *Queries) GetBlocksMaxHeight(ctx context.Context) (int32, error) {
-	row := q.db.QueryRowContext(ctx, getBlocksMaxHeight)
+	row := q.db.QueryRow(ctx, getBlocksMaxHeight)
 	var column_1 int32
 	err := row.Scan(&column_1)
 	return column_1, err
@@ -237,7 +234,7 @@ type InsertBlockParams struct {
 }
 
 func (q *Queries) InsertBlock(ctx context.Context, arg InsertBlockParams) error {
-	_, err := q.db.ExecContext(ctx, insertBlock,
+	_, err := q.db.Exec(ctx, insertBlock,
 		arg.Hash,
 		arg.Size,
 		arg.StrippedSize,
@@ -260,7 +257,7 @@ UPDATE blocks SET height = -2 WHERE orphan = true
 `
 
 func (q *Queries) SetNegativeHeightToOrphans(ctx context.Context) error {
-	_, err := q.db.ExecContext(ctx, setNegativeHeightToOrphans)
+	_, err := q.db.Exec(ctx, setNegativeHeightToOrphans)
 	return err
 }
 
@@ -269,6 +266,6 @@ UPDATE blocks SET orphan = true WHERE height > $1
 `
 
 func (q *Queries) SetOrphanAfterHeight(ctx context.Context, height int32) error {
-	_, err := q.db.ExecContext(ctx, setOrphanAfterHeight, height)
+	_, err := q.db.Exec(ctx, setOrphanAfterHeight, height)
 	return err
 }

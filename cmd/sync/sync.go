@@ -3,11 +3,13 @@ package main
 import (
 	"bytes"
 	"context"
-	"database/sql"
+
 	"log"
 	"os"
 	"strconv"
 	"time"
+
+	"github.com/jackc/pgx/v5"
 
 	"github.com/spacesprotocol/explorer-backend/pkg/db"
 	"github.com/spacesprotocol/explorer-backend/pkg/node"
@@ -46,7 +48,7 @@ func main() {
 	sc := node.SpacesClient{Client: spacesClient}
 	bc := node.BitcoinClient{Client: bitcoinClient}
 
-	pg, err := sql.Open("postgres", os.Getenv("POSTGRES_URI"))
+	pg, err := pgx.Connect(context.Background(), os.Getenv("POSTGRES_URI"))
 	if err != nil {
 		log.Fatalln(err)
 	}
@@ -67,20 +69,19 @@ func main() {
 
 }
 
-func syncRollouts(pg *sql.DB, sc *node.SpacesClient) error {
-	ctx := context.Background()
-	sqlTx, err := pg.BeginTx(ctx, nil)
+func syncRollouts(ctx context.Context, pg *pgx.Conn, sc *node.SpacesClient) error {
+	tx, err := pg.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		return err
 	}
 	defer func() {
-		err := sqlTx.Rollback()
-		if err != nil && err != sql.ErrTxDone {
+		err := tx.Rollback(ctx)
+		if err != nil && err != pgx.ErrTxClosed {
 			log.Fatalf("rollouts sync: cannot rollback sql transaction: %s", err)
 		}
 	}()
 
-	q := db.New(sqlTx)
+	q := db.New(tx)
 	if err = q.DeleteRollouts(ctx); err != nil {
 		return err
 	}
@@ -105,23 +106,23 @@ func syncRollouts(pg *sql.DB, sc *node.SpacesClient) error {
 			}
 		}
 	}
-	if err = sqlTx.Commit(); err != nil {
+	if err = tx.Commit(ctx); err != nil {
 		return err
 	}
 	return nil
 }
 
-func syncBlocks(pg *sql.DB, bc *node.BitcoinClient, sc *node.SpacesClient) error {
+func syncBlocks(pg *pgx.Conn, bc *node.BitcoinClient, sc *node.SpacesClient) error {
+	ctx := context.Background()
 	var hash *Bytes
-	height, hash, err := getSyncedHead(pg, bc) //get the last synced height and hash
+	height, hash, err := getSyncedHead(pg, bc)
 	if err != nil {
 		return err
 	}
 	log.Printf("found synced block of height %d and hash %s", height, hash)
 
-	// if height == -1 {
 	if height < fastSyncBlockHeight {
-		hash, err = bc.GetBlockHash(context.Background(), int(fastSyncBlockHeight))
+		hash, err = bc.GetBlockHash(ctx, int(fastSyncBlockHeight))
 		if err != nil {
 			return err
 		}
@@ -132,71 +133,67 @@ func syncBlocks(pg *sql.DB, bc *node.BitcoinClient, sc *node.SpacesClient) error
 		return err
 	}
 
-	block, err := bc.GetBlock(context.Background(), string(hashString))
+	block, err := bc.GetBlock(ctx, string(hashString))
 	if err != nil {
 		return err
 	}
 	nextBlockHash := block.NextBlockHash
 
 	if block.Height >= activationBlock {
-		if err := syncRollouts(pg, sc); err != nil {
+		if err := syncRollouts(ctx, pg, sc); err != nil {
 			log.Println(err)
 			return err
-			// time.Sleep(time.Second)
-			// continue
 		}
 	}
 
-	//TODO what if the node best block changes during the sync?
 	for nextBlockHash != nil {
-
 		nextHashString, err := nextBlockHash.MarshalText()
 		if err != nil {
 			return err
 		}
-		block, err := bc.GetBlock(context.Background(), string(nextHashString))
+		block, err := bc.GetBlock(ctx, string(nextHashString))
 		if err != nil {
 			return err
 		}
 		log.Printf("trying to sync block #%d", block.Height)
-		sqlTx, err := pg.BeginTx(context.Background(), nil)
+
+		tx, err := pg.BeginTx(ctx, pgx.TxOptions{})
 		if err != nil {
 			return err
 		}
 		defer func() {
-			err := sqlTx.Rollback()
-			if err != nil && err != sql.ErrTxDone {
+			err := tx.Rollback(ctx)
+			if err != nil && err != pgx.ErrTxClosed {
 				log.Fatalf("block sync: cannot rollback sql transaction: %s", err)
 			}
 		}()
 
-		sqlTx, err = sync.SyncBlock(block, sqlTx)
+		tx, err = sync.SyncBlock(block, tx)
 		if err != nil {
 			return err
 		}
 		if block.Height >= activationBlock {
-			spacesBlock, err := sc.GetBlockMeta(context.Background(), string(nextHashString))
+			spacesBlock, err := sc.GetBlockMeta(ctx, string(nextHashString))
 			if err != nil {
 				return err
 			}
-			sqlTx, err = sync.SyncSpacesTransactions(spacesBlock.Transactions, block.Hash, sqlTx)
+			tx, err = sync.SyncSpacesTransactions(spacesBlock.Transactions, block.Hash, tx)
 			if err != nil {
 				return err
 			}
 		}
-		err = sqlTx.Commit()
+		err = tx.Commit(ctx)
 		if err != nil {
 			return err
 		}
 		nextBlockHash = block.NextBlockHash
 	}
 	return nil
-
 }
 
 // detects chain split (reorganization) and
 // returns the height and blockhash of the last block that is identical in the db and in the node
-func getSyncedHead(pg *sql.DB, bc *node.BitcoinClient) (int32, *Bytes, error) {
+func getSyncedHead(pg *pgx.Conn, bc *node.BitcoinClient) (int32, *Bytes, error) {
 	q := db.New(pg)
 	//takes last block from the DB
 	height, err := q.GetBlocksMaxHeight(context.Background())

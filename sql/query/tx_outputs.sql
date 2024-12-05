@@ -2,6 +2,10 @@
 INSERT INTO tx_outputs (block_hash, txid, index, value, scriptPubKey)
 VALUES ($1, $2, $3, $4, $5);
 
+-- name: InsertBatchTxOutputs :copyfrom
+INSERT INTO tx_outputs (block_hash, txid, index, value, scriptPubKey)
+VALUES ($1, $2, $3, $4, $5);
+
 -- name: GetTxOutputsByTxid :many
 SELECT *
 FROM tx_outputs

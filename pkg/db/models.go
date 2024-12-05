@@ -5,10 +5,10 @@
 package db
 
 import (
-	"database/sql"
 	"database/sql/driver"
 	"fmt"
 
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/spacesprotocol/explorer-backend/pkg/types"
 )
 
@@ -91,7 +91,7 @@ type Transaction struct {
 	Locktime  int32
 	Fee       int64
 	BlockHash types.Bytes
-	Index     sql.NullInt32
+	Index     pgtype.Int4
 }
 
 type TxInput struct {
@@ -112,7 +112,7 @@ type TxOutput struct {
 	Value            int64
 	Scriptpubkey     types.Bytes
 	SpenderTxid      *types.Bytes
-	SpenderIndex     sql.NullInt64
+	SpenderIndex     pgtype.Int8
 	SpenderBlockHash *types.Bytes
 }
 
@@ -120,16 +120,16 @@ type Vmetaout struct {
 	BlockHash     types.Bytes
 	Txid          types.Bytes
 	Identifier    int64
-	Priority      sql.NullInt64
-	Name          sql.NullString
-	Reason        sql.NullString
-	Value         sql.NullInt64
+	Priority      pgtype.Int8
+	Name          pgtype.Text
+	Reason        pgtype.Text
+	Value         pgtype.Int8
 	Scriptpubkey  *types.Bytes
 	Action        NullCovenantAction
-	BurnIncrement sql.NullInt64
+	BurnIncrement pgtype.Int8
 	Signature     *types.Bytes
-	TotalBurned   sql.NullInt64
-	ClaimHeight   sql.NullInt64
-	ExpireHeight  sql.NullInt64
-	ScriptError   sql.NullString
+	TotalBurned   pgtype.Int8
+	ClaimHeight   pgtype.Int8
+	ExpireHeight  pgtype.Int8
+	ScriptError   pgtype.Text
 }
