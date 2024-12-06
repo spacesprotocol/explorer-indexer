@@ -6,6 +6,7 @@ packages:
     schema: "./sql/schema/"
     engine: "postgresql"
     emit_empty_slices: true
+    sql_package: "pgx/v5"
 overrides:
   - go_type: "github.com/spacesprotocol/explorer-backend/pkg/types.Bytes"
     db_type: "bytea"

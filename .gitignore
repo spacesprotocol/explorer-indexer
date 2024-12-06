@@ -1,4 +1,5 @@
 pgdata/
+regtest-data/
 *.dump
 dump.sql
 .env

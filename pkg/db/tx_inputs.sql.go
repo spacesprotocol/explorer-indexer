@@ -8,7 +8,6 @@ package db
 import (
 	"context"
 
-	"github.com/lib/pq"
 	"github.com/spacesprotocol/explorer-backend/pkg/types"
 )
 
@@ -25,7 +24,7 @@ type GetTxInputsByBlockAndTxidParams struct {
 }
 
 func (q *Queries) GetTxInputsByBlockAndTxid(ctx context.Context, arg GetTxInputsByBlockAndTxidParams) ([]TxInput, error) {
-	rows, err := q.db.QueryContext(ctx, getTxInputsByBlockAndTxid, arg.Txid, arg.BlockHash)
+	rows, err := q.db.Query(ctx, getTxInputsByBlockAndTxid, arg.Txid, arg.BlockHash)
 	if err != nil {
 		return nil, err
 	}
@@ -41,14 +40,11 @@ func (q *Queries) GetTxInputsByBlockAndTxid(ctx context.Context, arg GetTxInputs
 			&i.IndexPrevout,
 			&i.Sequence,
 			&i.Coinbase,
-			pq.Array(&i.Txinwitness),
+			&i.Txinwitness,
 		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
-	}
-	if err := rows.Close(); err != nil {
-		return nil, err
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
@@ -64,7 +60,7 @@ ORDER BY index
 `
 
 func (q *Queries) GetTxInputsByTxid(ctx context.Context, txid types.Bytes) ([]TxInput, error) {
-	rows, err := q.db.QueryContext(ctx, getTxInputsByTxid, txid)
+	rows, err := q.db.Query(ctx, getTxInputsByTxid, txid)
 	if err != nil {
 		return nil, err
 	}
@@ -80,19 +76,26 @@ func (q *Queries) GetTxInputsByTxid(ctx context.Context, txid types.Bytes) ([]Tx
 			&i.IndexPrevout,
 			&i.Sequence,
 			&i.Coinbase,
-			pq.Array(&i.Txinwitness),
+			&i.Txinwitness,
 		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
 	}
-	if err := rows.Close(); err != nil {
-		return nil, err
-	}
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
 	return items, nil
+}
+
+type InsertBatchTxInputsParams struct {
+	BlockHash    types.Bytes
+	Txid         types.Bytes
+	Index        int64
+	HashPrevout  *types.Bytes
+	IndexPrevout int64
+	Sequence     int64
+	Coinbase     *types.Bytes
 }
 
 const insertTxInput = `-- name: InsertTxInput :exec
@@ -111,7 +114,7 @@ type InsertTxInputParams struct {
 }
 
 func (q *Queries) InsertTxInput(ctx context.Context, arg InsertTxInputParams) error {
-	_, err := q.db.ExecContext(ctx, insertTxInput,
+	_, err := q.db.Exec(ctx, insertTxInput,
 		arg.BlockHash,
 		arg.Txid,
 		arg.Index,

@@ -3,6 +3,11 @@ INSERT INTO tx_inputs (block_hash, txid, index, hash_prevout, index_prevout, seq
 VALUES ($1, $2, $3, $4, $5, $6, $7);
 
 
+-- name: InsertBatchTxInputs :copyfrom
+INSERT INTO tx_inputs (block_hash, txid, index, hash_prevout, index_prevout, sequence, coinbase)
+VALUES ($1, $2, $3, $4, $5, $6, $7);
+
+
 -- name: GetTxInputsByTxid :many
 SELECT *
 FROM tx_inputs

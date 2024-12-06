@@ -1,0 +1,89 @@
+version: '3.8'
+
+services:
+  db:
+    image: postgres:16.3
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./regtest-data/pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  goose:
+    build: 
+      context: .
+      dockerfile: docker/Dockerfile.goose
+    environment:
+      POSTGRES_URI: "postgres://postgres:postgres@db:5432/postgres?sslmode=disable"
+    volumes:
+      - ./sql:/src/sql
+    depends_on:
+      db:
+        condition: service_healthy
+
+  bitcoin:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.bitcoin
+    command:
+      - bitcoind
+      - -regtest=1
+      - -server=1
+      - -rpcuser=bitcoin
+      - -rpcpassword=bitcoin
+      - -rpcallowip=0.0.0.0/0
+      - -rpcbind=0.0.0.0
+      - -txindex=1
+      - -fallbackfee=0.0002
+      - -discover=0
+      - -dns=0
+      - -dnsseed=0
+      - -listenonion=0
+      - -upnp=0
+    ports:
+      - "18443:18443"
+      - "18444:18444"
+    volumes:
+      - ./regtest-data/bitcoin:/root/.bitcoin
+    healthcheck:
+      test: ["CMD", "bitcoin-cli", "-regtest", "-rpcuser=bitcoin", "-rpcpassword=bitcoin", "getblockchaininfo"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  spaced:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.spaced
+    ports:
+      - "7218:7218" 
+    volumes:
+      - ./regtest-data/spaced:/root/.local/share/spaced
+    depends_on:
+      bitcoin:
+        condition: service_healthy
+
+  sync:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.sync
+    environment:
+      POSTGRES_URI: "postgres://postgres:postgres@db:5432/postgres?sslmode=disable"
+      BITCOIN_NODE_URI: http://bitcoin:18443
+      BITCOIN_NODE_USER: bitcoin
+      BITCOIN_NODE_PASSWORD: bitcoin
+      SPACES_NODE_URI: http://spaced:7218
+      UPDATE_DB_INTERVAL: 5
+    depends_on:
+      - db
+      - bitcoin
+      - spaced
+      - goose

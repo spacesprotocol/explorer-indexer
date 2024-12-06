@@ -2,306 +2,190 @@ package main
 
 import (
 	"context"
-	"database/sql"
-	"fmt"
-	"strings"
 
-	"github.com/jinzhu/copier"
+	"log"
+	"os"
+	"strconv"
+	"time"
+
+	"github.com/jackc/pgx/v5"
+
 	"github.com/spacesprotocol/explorer-backend/pkg/db"
 	"github.com/spacesprotocol/explorer-backend/pkg/node"
+	"github.com/spacesprotocol/explorer-backend/pkg/store"
+
+	_ "github.com/lib/pq"
 	. "github.com/spacesprotocol/explorer-backend/pkg/types"
 )
 
-func syncSpacesTransactions(txs []node.MetaTransaction, blockHash Bytes, sqlTx *sql.Tx) (*sql.Tx, error) {
-	q := db.New(sqlTx)
-	for _, tx := range txs {
-		for _, create := range tx.Creates {
-			vmet := db.InsertVMetaOutParams{
-				BlockHash:    blockHash,
-				Txid:         tx.TxID,
-				Value:        sql.NullInt64{int64(create.Value), true},
-				Scriptpubkey: &create.ScriptPubKey,
-			}
-			if create.Name != "" {
-				if create.Name[0] == '@' {
-					vmet.Name = sql.NullString{
-						String: create.Name[1:],
-						Valid:  true,
-					}
-				} else {
-					vmet.Name = sql.NullString{
-						String: create.Name,
-						Valid:  true,
-					}
-				}
-			}
+var activationBlock = getActivationBlock()
+var fastSyncBlockHeight = getFastSyncBlockHeight()
 
-			if create.Covenant.Type != "" {
-				switch strings.ToUpper(create.Covenant.Type) {
-				case "BID":
-					vmet.Action = db.NullCovenantAction{
-						CovenantAction: db.CovenantActionBID,
-						Valid:          true,
-					}
-				case "RESERVE":
-					vmet.Action = db.NullCovenantAction{
-						CovenantAction: db.CovenantActionRESERVE,
-						Valid:          true,
-					}
-				case "TRANSFER":
-					vmet.Action = db.NullCovenantAction{
-						CovenantAction: db.CovenantActionTRANSFER,
-						Valid:          true,
-					}
-				case "ROLLOUT":
-					vmet.Action = db.NullCovenantAction{
-						CovenantAction: db.CovenantActionROLLOUT,
-						Valid:          true,
-					}
-				case "REVOKE":
-					vmet.Action = db.NullCovenantAction{
-						CovenantAction: db.CovenantActionREVOKE,
-						Valid:          true,
-					}
-				default:
-					return sqlTx, fmt.Errorf("unknown covenant action: %s", create.Covenant.Type)
-				}
-
-				if create.Covenant.BurnIncrement != nil {
-					vmet.BurnIncrement = sql.NullInt64{Int64: int64(*create.Covenant.BurnIncrement), Valid: true}
-				}
-
-				if create.Covenant.TotalBurned != nil {
-					vmet.TotalBurned = sql.NullInt64{Int64: int64(*create.Covenant.TotalBurned), Valid: true}
-				}
-
-				if create.Covenant.ClaimHeight != nil {
-					vmet.ClaimHeight = sql.NullInt64{Int64: int64(*create.Covenant.ClaimHeight), Valid: true}
-				}
-
-				if create.Covenant.ExpireHeight != nil {
-					vmet.ExpireHeight = sql.NullInt64{Int64: int64(*create.Covenant.ExpireHeight), Valid: true}
-				}
-
-				if create.Covenant.Signature != nil {
-					vmet.Signature = &create.Covenant.Signature
-				}
-			}
-
-			if err := q.InsertVMetaOut(context.Background(), vmet); err != nil {
-				return sqlTx, err
-			}
-		}
-
-		for _, update := range tx.Updates {
-			vmet := db.InsertVMetaOutParams{
-				BlockHash:    blockHash,
-				Txid:         tx.TxID,
-				Value:        sql.NullInt64{int64(update.Output.Value), true},
-				Scriptpubkey: &update.Output.ScriptPubKey,
-			}
-
-			if update.Priority != 0 {
-				vmet.Priority = sql.NullInt64{Int64: int64(update.Priority), Valid: true}
-			}
-
-			if update.Reason != "" {
-				vmet.Reason = sql.NullString{update.Reason, true}
-			}
-
-			if update.Output.Name != "" {
-				if update.Output.Name[0] == '@' {
-					vmet.Name = sql.NullString{
-						String: update.Output.Name[1:],
-						Valid:  true,
-					}
-				} else {
-					vmet.Name = sql.NullString{
-						String: update.Output.Name,
-						Valid:  true,
-					}
-				}
-			}
-			switch strings.ToUpper(update.Type) {
-			case "BID":
-				vmet.Action = db.NullCovenantAction{
-					CovenantAction: db.CovenantActionBID,
-					Valid:          true,
-				}
-			case "RESERVE":
-				vmet.Action = db.NullCovenantAction{
-					CovenantAction: db.CovenantActionRESERVE,
-					Valid:          true,
-				}
-			case "TRANSFER":
-				vmet.Action = db.NullCovenantAction{
-					CovenantAction: db.CovenantActionTRANSFER,
-					Valid:          true,
-				}
-			case "ROLLOUT":
-				vmet.Action = db.NullCovenantAction{
-					CovenantAction: db.CovenantActionROLLOUT,
-					Valid:          true,
-				}
-			case "REVOKE":
-				vmet.Action = db.NullCovenantAction{
-					CovenantAction: db.CovenantActionREVOKE,
-					Valid:          true,
-				}
-			default:
-				return sqlTx, fmt.Errorf("unknown covenant action: %s", update.Type)
-			}
-			covenant := update.Output.Covenant
-			if covenant.BurnIncrement != nil {
-				vmet.BurnIncrement = sql.NullInt64{
-					Int64: int64(*covenant.BurnIncrement),
-					Valid: true,
-				}
-			}
-
-			if covenant.TotalBurned != nil {
-				vmet.TotalBurned = sql.NullInt64{
-					Int64: int64(*covenant.TotalBurned),
-					Valid: true,
-				}
-			}
-
-			if covenant.ClaimHeight != nil {
-				vmet.ClaimHeight = sql.NullInt64{
-					Int64: int64(*covenant.ClaimHeight),
-					Valid: true,
-				}
-			}
-
-			if covenant.ExpireHeight != nil {
-				vmet.ExpireHeight = sql.NullInt64{
-					Int64: int64(*covenant.ExpireHeight),
-					Valid: true,
-				}
-			}
-
-			if covenant.Signature != nil {
-				vmet.Signature = &covenant.Signature
-			}
-
-			if err := q.InsertVMetaOut(context.Background(), vmet); err != nil {
-				return sqlTx, err
-			}
-
-		}
-
-		for _, spend := range tx.Spends {
-			vmet := db.InsertVMetaOutParams{
-				BlockHash: blockHash,
-				Txid:      tx.TxID,
-			}
-
-			if spend.ScriptError != nil {
-				if spend.ScriptError.Name != "" {
-					if spend.ScriptError.Name[0] == '@' {
-						vmet.Name = sql.NullString{
-							String: spend.ScriptError.Name[1:],
-							Valid:  true,
-						}
-					} else {
-						vmet.Name = sql.NullString{
-							String: spend.ScriptError.Name,
-							Valid:  true,
-						}
-					}
-				}
-
-				if spend.ScriptError.Reason != "" {
-					vmet.ScriptError = sql.NullString{String: spend.ScriptError.Reason, Valid: true}
-				}
-
-				//TODO handle script error types gracefully
-				if strings.ToUpper(spend.ScriptError.Type) == "REJECT" {
-					vmet.Action = db.NullCovenantAction{CovenantAction: db.CovenantActionREJECT, Valid: true}
-				} else {
-					vmet.Action = db.NullCovenantAction{CovenantAction: db.CovenantActionREJECT, Valid: true}
-					vmet.ScriptError = sql.NullString{String: spend.ScriptError.Reason + string(spend.ScriptError.Type), Valid: true}
-				}
-			}
-
-			if err := q.InsertVMetaOut(context.Background(), vmet); err != nil {
-				return sqlTx, err
-			}
-
+func getActivationBlock() int32 {
+	if height := os.Getenv("ACTIVATION_BLOCK_HEIGHT"); height != "" {
+		if h, err := strconv.ParseInt(height, 10, 32); err == nil {
+			return int32(h)
 		}
 	}
-
-	return sqlTx, nil
+	return 0
 }
 
-func syncBlock(block *node.Block, sqlTx *sql.Tx) (*sql.Tx, error) {
-	q := db.New(sqlTx)
-	blockParams := db.InsertBlockParams{}
-	copier.Copy(&blockParams, &block)
-	if err := q.InsertBlock(context.Background(), blockParams); err != nil {
-		return sqlTx, err
-	}
-	for tx_index, transaction := range block.Transactions {
-		ind := int32(tx_index)
-		if err := insertTransaction(q, &transaction, &blockParams.Hash, &ind); err != nil {
-			return sqlTx, err
+func getFastSyncBlockHeight() int32 {
+	if height := os.Getenv("FAST_SYNC_BLOCK_HEIGHT"); height != "" {
+		if h, err := strconv.ParseInt(height, 10, 32); err == nil {
+			return int32(h)
 		}
 	}
-	return sqlTx, nil
+	return 0
 }
 
-func insertTransaction(q *db.Queries, transaction *node.Transaction, blockHash *Bytes, txIndex *int32) error {
-	transactionParams := db.InsertTransactionParams{}
-	copier.Copy(&transactionParams, &transaction)
-	var err error
-	transactionParams.BlockHash = *blockHash
-	var nullableIndex sql.NullInt32
-	if txIndex == nil {
-		nullableIndex.Valid = false
-	} else {
-		nullableIndex.Valid = true
-		nullableIndex.Int32 = *txIndex
+func main() {
+	log.SetFlags(log.LstdFlags | log.Lshortfile)
+	bitcoinClient := node.NewClient(os.Getenv("BITCOIN_NODE_URI"), os.Getenv("BITCOIN_NODE_USER"), os.Getenv("BITCOIN_NODE_PASSWORD"))
+	spacesClient := node.NewClient(os.Getenv("SPACES_NODE_URI"), "test", "test")
+
+	sc := node.SpacesClient{Client: spacesClient}
+	bc := node.BitcoinClient{Client: bitcoinClient}
+
+	pg, err := pgx.Connect(context.Background(), os.Getenv("POSTGRES_URI"))
+	if err != nil {
+		log.Fatalln(err)
 	}
-	transactionParams.Index = nullableIndex
-	if err = q.InsertTransaction(context.Background(), transactionParams); err != nil {
+
+	updateInterval, err := strconv.Atoi(os.Getenv("UPDATE_DB_INTERVAL"))
+	if err != nil {
+		log.Fatalln(err)
+	}
+
+	for {
+
+		if err := syncBlocks(pg, &bc, &sc); err != nil {
+			log.Println(err)
+			time.Sleep(time.Second)
+		}
+		time.Sleep(time.Duration(updateInterval) * time.Second)
+	}
+
+}
+
+func syncRollouts(ctx context.Context, pg *pgx.Conn, sc *node.SpacesClient) error {
+	tx, err := pg.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
 		return err
 	}
-	for input_index, txInput := range transaction.Vin {
-		txInputParams := db.InsertTxInputParams{}
-		copier.Copy(&txInputParams, &txInput)
-		txInputParams.BlockHash = *blockHash
-		txInputParams.Txid = transactionParams.Txid
-		txInputParams.Index = int64(input_index)
+	defer func() {
+		err := tx.Rollback(ctx)
+		if err != nil && err != pgx.ErrTxClosed {
+			log.Fatalf("rollouts sync: cannot rollback sql transaction: %s", err)
+		}
+	}()
 
-		if err := q.InsertTxInput(context.Background(), txInputParams); err != nil {
+	q := db.New(tx)
+	if err = q.DeleteRollouts(ctx); err != nil {
+		return err
+	}
+	for i := 0; i < 10; i++ {
+		result, err := sc.GetRollOut(ctx, i)
+		if err != nil {
 			return err
 		}
 
-		if txInputParams.Coinbase == nil {
-			var nullableIndex64 sql.NullInt64
-			nullableIndex64.Valid = true
-			nullableIndex64.Int64 = int64(input_index)
-			setSpenderParams := db.SetSpenderParams{
-				// BlockHash:    txInputParams.BlockHash, do i need it?
-				Txid:         *(txInputParams.HashPrevout),
-				Index:        txInputParams.IndexPrevout,
-				SpenderTxid:  &transactionParams.Txid,
-				SpenderIndex: nullableIndex64,
+		params := db.InsertRolloutParams{}
+		for _, space := range *result {
+			if space.Name[0] == '@' {
+				params.Name = space.Name[1:]
+			} else {
+				log.Fatalf("found incorrect space name during rollout sync: %s", space.Name)
 			}
-			if err = q.SetSpender(context.Background(), setSpenderParams); err != nil {
+			params.Bid = int64(space.Value)
+			params.Target = int64(i)
+			if err := q.InsertRollout(ctx, params); err != nil {
+				log.Printf("error inserting rollout batch %d: %v", i, err)
 				return err
 			}
 		}
 	}
-	for output_index, txOutput := range transaction.Vout {
-		txOutputParams := db.InsertTxOutputParams{}
-		txOutputParams.Txid = transactionParams.Txid
-		txOutputParams.BlockHash = *blockHash
-		copier.Copy(&txOutputParams, &txOutput)
-		txOutputParams.Index = int64(output_index)
-		if err := q.InsertTxOutput(context.Background(), txOutputParams); err != nil {
+	if err = tx.Commit(ctx); err != nil {
+		return err
+	}
+	return nil
+}
+
+func syncBlocks(pg *pgx.Conn, bc *node.BitcoinClient, sc *node.SpacesClient) error {
+	ctx := context.Background()
+	var hash *Bytes
+	height, hash, err := store.GetSyncedHead(pg, bc)
+	if err != nil {
+		return err
+	}
+	log.Printf("found synced block of height %d and hash %s", height, hash)
+
+	if height < fastSyncBlockHeight {
+		hash, err = bc.GetBlockHash(ctx, int(fastSyncBlockHeight-1))
+		if err != nil {
 			return err
 		}
+	}
+
+	hashString, err := hash.MarshalText()
+	if err != nil {
+		return err
+	}
+
+	block, err := bc.GetBlock(ctx, string(hashString))
+	if err != nil {
+		return err
+	}
+	nextBlockHash := block.NextBlockHash
+
+	if block.Height >= activationBlock {
+		if err := syncRollouts(ctx, pg, sc); err != nil {
+			log.Println(err)
+			return err
+		}
+	}
+
+	for nextBlockHash != nil {
+		nextHashString, err := nextBlockHash.MarshalText()
+		if err != nil {
+			return err
+		}
+		block, err := bc.GetBlock(ctx, string(nextHashString))
+		if err != nil {
+			return err
+		}
+		log.Printf("trying to sync block #%d", block.Height)
+
+		tx, err := pg.BeginTx(ctx, pgx.TxOptions{})
+		if err != nil {
+			return err
+		}
+		defer func() {
+			err := tx.Rollback(ctx)
+			if err != nil && err != pgx.ErrTxClosed {
+				log.Fatalf("block sync: cannot rollback sql transaction: %s", err)
+			}
+		}()
+
+		tx, err = store.StoreBlock(block, tx)
+		if err != nil {
+			return err
+		}
+		if block.Height >= activationBlock {
+			spacesBlock, err := sc.GetBlockMeta(ctx, string(nextHashString))
+			if err != nil {
+				return err
+			}
+			tx, err = store.StoreSpacesTransactions(spacesBlock.Transactions, block.Hash, tx)
+			if err != nil {
+				return err
+			}
+		}
+		err = tx.Commit(ctx)
+		if err != nil {
+			return err
+		}
+		nextBlockHash = block.NextBlockHash
 	}
 	return nil
 }

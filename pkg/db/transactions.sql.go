@@ -7,8 +7,8 @@ package db
 
 import (
 	"context"
-	"database/sql"
 
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/spacesprotocol/explorer-backend/pkg/types"
 )
 
@@ -18,7 +18,7 @@ WHERE block_hash IS NULL
 `
 
 func (q *Queries) DeleteMempool(ctx context.Context) error {
-	_, err := q.db.ExecContext(ctx, deleteMempool)
+	_, err := q.db.Exec(ctx, deleteMempool)
 	return err
 }
 
@@ -36,7 +36,7 @@ type GetMempoolTransactionsParams struct {
 }
 
 func (q *Queries) GetMempoolTransactions(ctx context.Context, arg GetMempoolTransactionsParams) ([]Transaction, error) {
-	rows, err := q.db.QueryContext(ctx, getMempoolTransactions, arg.Limit, arg.Offset)
+	rows, err := q.db.Query(ctx, getMempoolTransactions, arg.Limit, arg.Offset)
 	if err != nil {
 		return nil, err
 	}
@@ -59,9 +59,6 @@ func (q *Queries) GetMempoolTransactions(ctx context.Context, arg GetMempoolTran
 			return nil, err
 		}
 		items = append(items, i)
-	}
-	if err := rows.Close(); err != nil {
-		return nil, err
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
@@ -88,12 +85,12 @@ type GetTransactionByTxidRow struct {
 	Locktime           int32
 	Fee                int64
 	BlockHash          types.Bytes
-	Index              sql.NullInt32
+	Index              pgtype.Int4
 	BlockHeightNotNull int32
 }
 
 func (q *Queries) GetTransactionByTxid(ctx context.Context, txid types.Bytes) (GetTransactionByTxidRow, error) {
-	row := q.db.QueryRowContext(ctx, getTransactionByTxid, txid)
+	row := q.db.QueryRow(ctx, getTransactionByTxid, txid)
 	var i GetTransactionByTxidRow
 	err := row.Scan(
 		&i.Txid,
@@ -139,12 +136,12 @@ type GetTransactionsByBlockHeightRow struct {
 	Locktime           int32
 	Fee                int64
 	BlockHash          types.Bytes
-	Index              sql.NullInt32
+	Index              pgtype.Int4
 	BlockHeightNotNull int32
 }
 
 func (q *Queries) GetTransactionsByBlockHeight(ctx context.Context, arg GetTransactionsByBlockHeightParams) ([]GetTransactionsByBlockHeightRow, error) {
-	rows, err := q.db.QueryContext(ctx, getTransactionsByBlockHeight, arg.Height, arg.Limit, arg.Offset)
+	rows, err := q.db.Query(ctx, getTransactionsByBlockHeight, arg.Height, arg.Limit, arg.Offset)
 	if err != nil {
 		return nil, err
 	}
@@ -169,9 +166,6 @@ func (q *Queries) GetTransactionsByBlockHeight(ctx context.Context, arg GetTrans
 		}
 		items = append(items, i)
 	}
-	if err := rows.Close(); err != nil {
-		return nil, err
-	}
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
@@ -193,11 +187,11 @@ type InsertTransactionParams struct {
 	Locktime  int32
 	Fee       int64
 	BlockHash types.Bytes
-	Index     sql.NullInt32
+	Index     pgtype.Int4
 }
 
 func (q *Queries) InsertTransaction(ctx context.Context, arg InsertTransactionParams) error {
-	_, err := q.db.ExecContext(ctx, insertTransaction,
+	_, err := q.db.Exec(ctx, insertTransaction,
 		arg.Txid,
 		arg.TxHash,
 		arg.Version,
