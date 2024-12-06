@@ -1,71 +1,113 @@
 # Overview
 
-This repository contains the indexer for the spaces protocol explorer. 
-The indexer retrieves the blocks' data from the bitcoin and spaces nodes and stores it into the postgresql database.
+This repository contains an indexer for the spaces protocol explorer. 
+The indexer retrieves block data from the bitcoin and spaces nodes and stores it into the postgresql database.
 
-## Install
+## Requirements
+- Go v1.21 or higher
+- PostgreSQL 14 or higher
+- Docker v25.0.3 or higher (for containerized setups)
+- Bitcoin Core node (for non-Docker setups)
+- Spaces Protocol node (for non-Docker setups)
 
+## Installation
+1. Clone the repository
+```bash
+git clone https://github.com/spacesprotocol/explorer-indexer
+cd explorer-indexer
 ```
+
+2. Install dependencies
+```bash
 go mod download
 ```
 
+3. Build the executables
+```bash
+go build ./cmd/sync
+go build ./cmd/backfill
+```
+
+## Usage
+The indexer provides two main executables:
+
+### Sync Service
+The primary service that indexes both Bitcoin and Spaces Protocol data:
+```bash
+./sync
+```
+
+Supports two sync modes:
+- **Full Sync**: Indexes from the genesis block (slower but complete)
+- **Fast Sync**: Starts from the Spaces Protocol activation block
+  - Mainnet: Block 871222
+  - Testnet4: Block 50000
+
+### Backfill Service
+Used to populate historical Bitcoin blocks when using Fast Sync mode:
+```bash
+./backfill
+```
+Note: Backfill only stores Bitcoin data, not Spaces Protocol data.
+
+### Configuration
+Configuration is handled through environment variables. Copy and modify the example configuration:
+```bash
+cp env.example .env
+# Edit .env with your settings
+```
+
 ## Development
+There are three ways to set up the development environment:
 
-### Docker
+### Complete docker regtest setup 
 
-There is a docker compose file for a complete backend setup which makes it easier to work on the [frontend
-part](https://github.com/spacesprotocol/explorer) part. It is  located in `docker` folder which does the following:
+This setup is ideal for working on the [frontend part](https://github.com/spacesprotocol/explorer) as it provides a complete backend environment.
 
-- creates postgresql database
-- runs needed migrations for the database
-- runs bitcoin node for regtest network
-- runs spaced node
-- opens several dozens of spaces
+The docker setup in the `docker` folder provides:
+- PostgreSQL database
+- Automated database migrations
+- Bitcoin node (regtest network)
+- Spaced node
+- Pre-configured spaces instances
 
-Build the docker:
-```
+Setup steps:
+```bash
+# Build the docker images
 docker compose -f docker-regtest.yml build
-```
 
-Then run it:
-
-```
+# Start the services
 docker compose -f docker-regtest.yml up
 ```
 
-Docker data is stored in `regtest-data`.
+Docker data is stored in `regtest-data` directory.
 
-### Manual setup
+### 2. PostgreSQL-only docker setup
+If you're working on the indexer itself and want to manage the blockchain nodes separately, you can run just PostgreSQL in Docker:
 
-Run postgresql instance in docker:
-```
+```bash
+# Start PostgreSQL container
 docker-compose up
 ```
 
-### Migrations
+#### Migrations 
 
-[Goose](https://github.com/pressly/goose) is used for migrations. Migrations are located in `sql/schema`.
+You will also need to run migrations for the database, they are managed with [Goose](https://github.com/pressly/goose). Migrations are located in `sql/schema`.
 
 ```
 . ./env.example
 goose up
-```
-
-### Blockchain nodes
-
-Run bitcoind and spaced nodes, their URIs should be stored as environment variables which are later used by the sync
-service.
-
-### Sync
-
-Sync is a go service which stores the blockchain data.
-
-```
-. ./env.example
 go run cmd/sync/*
 ```
 
-Now you should have a working service.
+
+### Manual Setup
+
+For complete control over your environment, you can:
+1. Run PostgreSQL directly on your system and run migrations
+2. Set up Bitcoin and Spaces nodes manually
+3. Configure the environment variables to point to your services
+4. Run the needed executable
 
 ### SQLC
 

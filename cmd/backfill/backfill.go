@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"database/sql"
 	"log"
 	"os"
 	"strconv"
@@ -69,7 +68,7 @@ func syncGapBlocks(pg *pgx.Conn, bc *node.BitcoinClient) error {
 	var hash *Bytes
 	var gapEnd int32
 
-	var gapStarted bool
+	var gapStarted bool = false
 	height, hash, err := store.GetSyncedHead(pg, bc)
 	if err != nil {
 		return err
@@ -88,12 +87,14 @@ func syncGapBlocks(pg *pgx.Conn, bc *node.BitcoinClient) error {
 			gapEnd = workingHeight
 			break
 		}
-		if err == sql.ErrNoRows {
+		if err == pgx.ErrNoRows {
 			gapStarted = true
-			log.Printf("found no rows at height %d", workingHeight)
+			log.Printf("found no rows at the height %d", workingHeight)
+		} else {
+			log.Fatal(err)
 		}
 	}
-	log.Printf("gap end is on the height of %d", gapEnd)
+	log.Printf("the gap end is at the height of %d", gapEnd)
 	height = gapEnd
 
 	hash, err = bc.GetBlockHash(context.Background(), int(height))
