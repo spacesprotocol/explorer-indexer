@@ -79,6 +79,7 @@ func syncGapBlocks(pg *pgx.Conn, bc *node.BitcoinClient) error {
 	for workingHeight := height; workingHeight >= 0; workingHeight-- {
 		ctx := context.Background()
 		block, err := q.GetBlockByHeight(ctx, workingHeight)
+
 		if err == nil {
 			if !gapStarted {
 				log.Printf("going down, got block at height %d, it has hash %s", workingHeight, block.Hash)
@@ -87,6 +88,7 @@ func syncGapBlocks(pg *pgx.Conn, bc *node.BitcoinClient) error {
 			gapEnd = workingHeight
 			break
 		}
+
 		if err == pgx.ErrNoRows {
 			gapStarted = true
 			log.Printf("found no rows at the height %d", workingHeight)
@@ -95,9 +97,7 @@ func syncGapBlocks(pg *pgx.Conn, bc *node.BitcoinClient) error {
 		}
 	}
 	log.Printf("the gap end is at the height of %d", gapEnd)
-	height = gapEnd
-
-	hash, err = bc.GetBlockHash(context.Background(), int(height))
+	hash, err = bc.GetBlockHash(context.Background(), int(gapEnd))
 	if err != nil {
 		return err
 	}
