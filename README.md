@@ -7,8 +7,8 @@ The indexer retrieves block data from the bitcoin and spaces nodes and stores it
 - Go v1.21 or higher
 - PostgreSQL 14 or higher
 - Docker v25.0.3 or higher (for containerized setups)
-- Bitcoin Core node (for non-Docker setups)
-- Spaces Protocol node (for non-Docker setups)
+- Bitcoin Core node (for non-docker setups)
+- Spaces protocol node (for non-docker setups)
 
 ## Installation
 1. Clone the repository
@@ -32,23 +32,23 @@ go build ./cmd/backfill
 The indexer provides two main executables:
 
 ### Sync Service
-The primary service that indexes both Bitcoin and Spaces Protocol data:
+The primary service that indexes both bitcoin and spaces protocol data:
 ```bash
 ./sync
 ```
 
 Supports two sync modes:
 - **Full Sync**: Indexes from the genesis block (slower but complete)
-- **Fast Sync**: Starts from the Spaces Protocol activation block
+- **Fast Sync**: Starts from the spaces protocol activation block
   - Mainnet: Block 871222
   - Testnet4: Block 50000
 
 ### Backfill Service
-Used to populate historical Bitcoin blocks when using Fast Sync mode:
+Used to populate historical bitcoin blocks when using fast sync mode:
 ```bash
 ./backfill
 ```
-Note: Backfill only stores Bitcoin data, not Spaces Protocol data.
+Note: backfill only stores bitcoin data, not spaces protocol data.
 
 ### Configuration
 Configuration is handled through environment variables. Copy and modify the example configuration:
@@ -82,11 +82,11 @@ docker compose -f docker-regtest.yml up
 
 Docker data is stored in `regtest-data` directory.
 
-### 2. PostgreSQL-only docker setup
-If you're working on the indexer itself and want to manage the blockchain nodes separately, you can run just PostgreSQL in Docker:
+### PostgreSQL-only docker setup
+If you're working on the indexer itself and want to manage the blockchain nodes separately, you can run just PostgreSQL in docker:
 
 ```bash
-# Start PostgreSQL container
+# Start database container
 docker-compose up
 ```
 
