@@ -128,10 +128,19 @@ func syncGapBlocks(pg *pgx.Conn, bc *node.BitcoinClient) error {
 		if err != nil {
 			return err
 		}
+		defer func() {
+			err := sqlTx.Rollback(ctx)
+			if err != nil && err != pgx.ErrTxClosed {
+				log.Fatalf("block sync: cannot rollback sql transaction: %s", err)
+			}
+		}()
 
-		sqlTx, err = store.StoreBlock(block, sqlTx)
+		if block.Height >= fastSyncBlockHeight {
+			sqlTx, err = store.UpdateBlockSpender(block, sqlTx)
+		} else {
+			sqlTx, err = store.StoreBlock(block, sqlTx)
+		}
 		if err != nil {
-			sqlTx.Rollback(ctx)
 			return err
 		}
 		// if block.Height >= activationBlock {

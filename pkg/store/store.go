@@ -253,6 +253,42 @@ func StoreBlock(block *node.Block, tx pgx.Tx) (pgx.Tx, error) {
 	return tx, nil
 }
 
+func UpdateBlockSpender(block *node.Block, tx pgx.Tx) (pgx.Tx, error) {
+	q := db.New(tx)
+	for _, transaction := range block.Transactions {
+		if err := updateTxSpenders(q, &transaction); err != nil {
+			return tx, err
+		}
+	}
+	return tx, nil
+}
+
+func updateTxSpenders(q *db.Queries, transaction *node.Transaction) error {
+	var spenderUpdates []db.SetSpenderParams
+	for input_index, txInput := range transaction.Vin {
+
+		if txInput.Coinbase == nil {
+			var nullableIndex64 pgtype.Int8
+			nullableIndex64.Valid = true
+			nullableIndex64.Int64 = int64(input_index)
+			spenderUpdates = append(spenderUpdates, db.SetSpenderParams{
+				Txid:         *(txInput.HashPrevout),
+				Index:        int64(txInput.IndexPrevout),
+				SpenderTxid:  &transaction.Txid,
+				SpenderIndex: nullableIndex64,
+			})
+		}
+	}
+
+	for _, update := range spenderUpdates {
+		if err := q.SetSpender(context.Background(), update); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
 func storeTransaction(q *db.Queries, transaction *node.Transaction, blockHash *Bytes, txIndex *int32) error {
 	transactionParams := db.InsertTransactionParams{}
 	copier.Copy(&transactionParams, &transaction)

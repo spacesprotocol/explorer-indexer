@@ -68,8 +68,8 @@ The docker setup in the `docker` folder provides:
 - PostgreSQL database
 - Automated database migrations
 - Bitcoin node (regtest network)
-- Spaced node
-- Pre-configured spaces instances
+- Spaced node 
+- Pre-configured spaces transactions with bids and opens
 
 Setup steps:
 ```bash
