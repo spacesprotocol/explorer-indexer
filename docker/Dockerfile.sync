@@ -2,18 +2,14 @@ FROM golang:1.21-alpine
 
 WORKDIR /app
 
-# Install build dependencies
 RUN apk add --no-cache gcc g++ git
 
-# Copy only necessary files
 COPY go.mod go.sum ./
 RUN go mod download
 
-# Copy only the required directories
 COPY cmd/sync cmd/sync
 COPY pkg pkg
 
-# Build the sync service
 RUN go build -o /usr/local/bin/sync ./cmd/sync
 
 CMD ["sync"]

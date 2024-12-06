@@ -1,11 +1,10 @@
-package sync
+package store
 
 import (
+	"bytes"
 	"context"
 	"fmt"
-	"log"
 	"strings"
-	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -16,59 +15,7 @@ import (
 	. "github.com/spacesprotocol/explorer-backend/pkg/types"
 )
 
-type AggregateStats struct {
-	StartHeight  int32
-	EndHeight    int32
-	TotalTime    time.Duration
-	TotalBlocks  int
-	TotalTx      int
-	TotalInputs  int
-	TotalOutputs int
-	StartTime    time.Time
-}
-
-var (
-	currentAggregation *AggregateStats
-	aggregationSize    = 100 // Size of batch for aggregation
-)
-
-func logAggregateStats(stats *AggregateStats) {
-	timePerBlock := float64(stats.TotalTime.Milliseconds()) / float64(stats.TotalBlocks)
-	timePerTx := float64(stats.TotalTime.Milliseconds()) / float64(stats.TotalTx)
-	timePerIO := float64(stats.TotalTime.Milliseconds()) / float64(stats.TotalInputs+stats.TotalOutputs)
-
-	log.Printf("\n=== Aggregate Statistics for blocks %d-%d ===", stats.StartHeight, stats.EndHeight)
-	log.Printf("Total time: %v", stats.TotalTime)
-	log.Printf("Total blocks: %d (%.2f ms/block)", stats.TotalBlocks, timePerBlock)
-	log.Printf("Total transactions: %d (%.2f ms/tx)", stats.TotalTx, timePerTx)
-	log.Printf("Total I/O operations: %d (%.2f ms/op)",
-		stats.TotalInputs+stats.TotalOutputs, timePerIO)
-}
-
-func updateAggregateStats(height int32, txCount, inputCount, outputCount int) {
-	if currentAggregation == nil {
-		currentAggregation = &AggregateStats{
-			StartHeight: height,
-			StartTime:   time.Now(),
-		}
-	}
-
-	// Update counters
-	currentAggregation.TotalBlocks++
-	currentAggregation.TotalTx += txCount
-	currentAggregation.TotalInputs += inputCount
-	currentAggregation.TotalOutputs += outputCount
-
-	// If we've reached the batch size, log and reset
-	if currentAggregation.TotalBlocks >= aggregationSize {
-		currentAggregation.EndHeight = height
-		currentAggregation.TotalTime = time.Since(currentAggregation.StartTime)
-		logAggregateStats(currentAggregation)
-		currentAggregation = nil
-	}
-}
-
-func SyncSpacesTransactions(txs []node.MetaTransaction, blockHash Bytes, sqlTx pgx.Tx) (pgx.Tx, error) {
+func StoreSpacesTransactions(txs []node.MetaTransaction, blockHash Bytes, sqlTx pgx.Tx) (pgx.Tx, error) {
 	q := db.New(sqlTx)
 	for _, tx := range txs {
 		for _, create := range tx.Creates {
@@ -290,32 +237,23 @@ func SyncSpacesTransactions(txs []node.MetaTransaction, blockHash Bytes, sqlTx p
 	return sqlTx, nil
 }
 
-func SyncBlock(block *node.Block, tx pgx.Tx) (pgx.Tx, error) {
+func StoreBlock(block *node.Block, tx pgx.Tx) (pgx.Tx, error) {
 	q := db.New(tx)
 	blockParams := db.InsertBlockParams{}
 	copier.Copy(&blockParams, &block)
 	if err := q.InsertBlock(context.Background(), blockParams); err != nil {
 		return tx, err
 	}
-	txCount := 0
-	inputCount := 0
-	outputCount := 0
 	for tx_index, transaction := range block.Transactions {
 		ind := int32(tx_index)
-		if err := insertTransaction(q, &transaction, &blockParams.Hash, &ind); err != nil {
+		if err := storeTransaction(q, &transaction, &blockParams.Hash, &ind); err != nil {
 			return tx, err
 		}
-
-		// Collect metrics
-		txCount++
-		inputCount += len(transaction.Vin)
-		outputCount += len(transaction.Vout)
 	}
-	updateAggregateStats(block.Height, txCount, inputCount, outputCount)
 	return tx, nil
 }
 
-func insertTransaction(q *db.Queries, transaction *node.Transaction, blockHash *Bytes, txIndex *int32) error {
+func storeTransaction(q *db.Queries, transaction *node.Transaction, blockHash *Bytes, txIndex *int32) error {
 	transactionParams := db.InsertTransactionParams{}
 	copier.Copy(&transactionParams, &transaction)
 	transactionParams.BlockHash = *blockHash
@@ -328,12 +266,10 @@ func insertTransaction(q *db.Queries, transaction *node.Transaction, blockHash *
 	}
 	transactionParams.Index = nullableIndex
 
-	// Insert the transaction first
 	if err := q.InsertTransaction(context.Background(), transactionParams); err != nil {
 		return err
 	}
 
-	// Prepare batch inputs
 	inputs := make([]db.InsertBatchTxInputsParams, 0, len(transaction.Vin))
 	var spenderUpdates []db.SetSpenderParams
 
@@ -362,7 +298,6 @@ func insertTransaction(q *db.Queries, transaction *node.Transaction, blockHash *
 		}
 	}
 
-	// Prepare batch outputs
 	outputs := make([]db.InsertBatchTxOutputsParams, 0, len(transaction.Vout))
 	for output_index, txOutput := range transaction.Vout {
 		outputParam := db.InsertBatchTxOutputsParams{
@@ -375,21 +310,18 @@ func insertTransaction(q *db.Queries, transaction *node.Transaction, blockHash *
 		outputs = append(outputs, outputParam)
 	}
 
-	// Batch insert inputs
 	if len(inputs) > 0 {
 		if _, err := q.InsertBatchTxInputs(context.Background(), inputs); err != nil {
 			return fmt.Errorf("batch insert inputs: %w", err)
 		}
 	}
 
-	// Batch insert outputs
 	if len(outputs) > 0 {
 		if _, err := q.InsertBatchTxOutputs(context.Background(), outputs); err != nil {
 			return fmt.Errorf("batch insert outputs: %w", err)
 		}
 	}
 
-	// Process spender updates
 	for _, update := range spenderUpdates {
 		if err := q.SetSpender(context.Background(), update); err != nil {
 			return err
@@ -399,58 +331,96 @@ func insertTransaction(q *db.Queries, transaction *node.Transaction, blockHash *
 	return nil
 }
 
-func insertTransaction2(q *db.Queries, transaction *node.Transaction, blockHash *Bytes, txIndex *int32) error {
-	transactionParams := db.InsertTransactionParams{}
-	copier.Copy(&transactionParams, &transaction)
-	var err error
-	transactionParams.BlockHash = *blockHash
-	var nullableIndex pgtype.Int4
-	if txIndex == nil {
-		nullableIndex.Valid = false
-	} else {
-		nullableIndex.Valid = true
-		nullableIndex.Int32 = *txIndex
+// detects chain split (reorganization) and
+// returns the height and blockhash of the last block that is identical in the db and in the node
+func GetSyncedHead(pg *pgx.Conn, bc *node.BitcoinClient) (int32, *Bytes, error) {
+	q := db.New(pg)
+	//takes last block from the DB
+	height, err := q.GetBlocksMaxHeight(context.Background())
+	if err != nil {
+		return -1, nil, err
 	}
-	transactionParams.Index = nullableIndex
-	if err = q.InsertTransaction(context.Background(), transactionParams); err != nil {
-		return err
-	}
-	for input_index, txInput := range transaction.Vin {
-		txInputParams := db.InsertTxInputParams{}
-		copier.Copy(&txInputParams, &txInput)
-		txInputParams.BlockHash = *blockHash
-		txInputParams.Txid = transactionParams.Txid
-		txInputParams.Index = int64(input_index)
-
-		if err := q.InsertTxInput(context.Background(), txInputParams); err != nil {
-			return err
+	//height is the height of the db block
+	for height >= 0 {
+		//take last block hash from the DB
+		dbHash, err := q.GetBlockHashByHeight(context.Background(), height)
+		if err != nil {
+			return -1, nil, err
 		}
-
-		if txInputParams.Coinbase == nil {
-			var nullableIndex64 pgtype.Int8
-			nullableIndex64.Valid = true
-			nullableIndex64.Int64 = int64(input_index)
-			setSpenderParams := db.SetSpenderParams{
-				// BlockHash:    txInputParams.BlockHash, do i need it?
-				Txid:         *(txInputParams.HashPrevout),
-				Index:        txInputParams.IndexPrevout,
-				SpenderTxid:  &transactionParams.Txid,
-				SpenderIndex: nullableIndex64,
+		//takes the block of same height from the bitcoin node
+		nodeHash, err := bc.GetBlockHash(context.Background(), int(height))
+		if err != nil {
+			return -1, nil, err
+		}
+		// nodeHash *bytes
+		// dbHash Bytes
+		if bytes.Equal(dbHash, *nodeHash) {
+			//marking all the blocks in the DB after the sycned height as orphans
+			if err := q.SetOrphanAfterHeight(context.Background(), height); err != nil {
+				return -1, nil, err
 			}
-			if err = q.SetSpender(context.Background(), setSpenderParams); err != nil {
-				return err
+			if err := q.SetNegativeHeightToOrphans(context.Background()); err != nil {
+				return -1, nil, err
 			}
+			return height, &dbHash, nil
 		}
+		height -= 1
 	}
-	for output_index, txOutput := range transaction.Vout {
-		txOutputParams := db.InsertTxOutputParams{}
-		txOutputParams.Txid = transactionParams.Txid
-		txOutputParams.BlockHash = *blockHash
-		copier.Copy(&txOutputParams, &txOutput)
-		txOutputParams.Index = int64(output_index)
-		if err := q.InsertTxOutput(context.Background(), txOutputParams); err != nil {
-			return err
-		}
-	}
-	return nil
+	return -1, nil, nil
 }
+
+// func storeTransaction2(q *db.Queries, transaction *node.Transaction, blockHash *Bytes, txIndex *int32) error {
+// 	transactionParams := db.InsertTransactionParams{}
+// 	copier.Copy(&transactionParams, &transaction)
+// 	var err error
+// 	transactionParams.BlockHash = *blockHash
+// 	var nullableIndex pgtype.Int4
+// 	if txIndex == nil {
+// 		nullableIndex.Valid = false
+// 	} else {
+// 		nullableIndex.Valid = true
+// 		nullableIndex.Int32 = *txIndex
+// 	}
+// 	transactionParams.Index = nullableIndex
+// 	if err = q.InsertTransaction(context.Background(), transactionParams); err != nil {
+// 		return err
+// 	}
+// 	for input_index, txInput := range transaction.Vin {
+// 		txInputParams := db.InsertTxInputParams{}
+// 		copier.Copy(&txInputParams, &txInput)
+// 		txInputParams.BlockHash = *blockHash
+// 		txInputParams.Txid = transactionParams.Txid
+// 		txInputParams.Index = int64(input_index)
+//
+// 		if err := q.InsertTxInput(context.Background(), txInputParams); err != nil {
+// 			return err
+// 		}
+//
+// 		if txInputParams.Coinbase == nil {
+// 			var nullableIndex64 pgtype.Int8
+// 			nullableIndex64.Valid = true
+// 			nullableIndex64.Int64 = int64(input_index)
+// 			setSpenderParams := db.SetSpenderParams{
+// 				// BlockHash:    txInputParams.BlockHash, do i need it?
+// 				Txid:         *(txInputParams.HashPrevout),
+// 				Index:        txInputParams.IndexPrevout,
+// 				SpenderTxid:  &transactionParams.Txid,
+// 				SpenderIndex: nullableIndex64,
+// 			}
+// 			if err = q.SetSpender(context.Background(), setSpenderParams); err != nil {
+// 				return err
+// 			}
+// 		}
+// 	}
+// 	for output_index, txOutput := range transaction.Vout {
+// 		txOutputParams := db.InsertTxOutputParams{}
+// 		txOutputParams.Txid = transactionParams.Txid
+// 		txOutputParams.BlockHash = *blockHash
+// 		copier.Copy(&txOutputParams, &txOutput)
+// 		txOutputParams.Index = int64(output_index)
+// 		if err := q.InsertTxOutput(context.Background(), txOutputParams); err != nil {
+// 			return err
+// 		}
+// 	}
+// 	return nil
+// }

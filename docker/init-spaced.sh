@@ -1,13 +1,12 @@
 #!/bin/bash
 # init-spaced.sh
 
-# Start spaced in the background with correct arguments
 spaced --block-index --chain=regtest --bitcoin-rpc-user=bitcoin --bitcoin-rpc-password=bitcoin --bitcoin-rpc-url=http://bitcoin:18443 --rpc-bind=0.0.0.0 &
 SPACED_PID=$!
 
 # Wait for both Bitcoin and Spaced to be ready
 BLOCK_COUNT=$(PGPASSWORD=postgres psql -h db -U postgres -d postgres -t -c "SELECT COUNT(*) FROM blocks;" | tr -d ' ')
-echo $BLOCK_COUNT
+echo "latest block in the db is of height $BLOCK_COUNT"
 
 if [ "$BLOCK_COUNT" -eq "0" ]; then
     echo "Empty database detected. Running initialization..."

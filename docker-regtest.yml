@@ -1,9 +1,5 @@
 version: '3.8'
 
-# networks:
-#   app-network:
-#     driver: bridge
-
 services:
   db:
     image: postgres:16.3
@@ -20,13 +16,11 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
-    # networks:
-    #   - app-network
 
   goose:
     build: 
       context: .
-      dockerfile: Dockerfile.goose
+      dockerfile: docker/Dockerfile.goose
     environment:
       POSTGRES_URI: "postgres://postgres:postgres@db:5432/postgres?sslmode=disable"
     volumes:
@@ -34,13 +28,11 @@ services:
     depends_on:
       db:
         condition: service_healthy
-    # networks:
-    #   - app-network
 
   bitcoin:
     build:
       context: .
-      dockerfile: Dockerfile.bitcoin
+      dockerfile: docker/Dockerfile.bitcoin
     command:
       - bitcoind
       - -regtest=1
@@ -60,23 +52,21 @@ services:
       - "18443:18443"
       - "18444:18444"
     volumes:
-      - ./regtest-data/bitcoin:/home/bitcoin/.bitcoin
+      - ./regtest-data/bitcoin:/root/.bitcoin
     healthcheck:
       test: ["CMD", "bitcoin-cli", "-regtest", "-rpcuser=bitcoin", "-rpcpassword=bitcoin", "getblockchaininfo"]
       interval: 30s
       timeout: 10s
       retries: 5
-    # networks:
-    #   - app-network
 
   spaced:
     build:
       context: .
-      dockerfile: Dockerfile.spaced
+      dockerfile: docker/Dockerfile.spaced
     ports:
       - "7218:7218" 
     volumes:
-      - ./regtest-data/spaced:/home/spaced/.spaced
+      - ./regtest-data/spaced:/root/.local/share/spaced
     depends_on:
       bitcoin:
         condition: service_healthy
@@ -84,7 +74,7 @@ services:
   sync:
     build:
       context: .
-      dockerfile: Dockerfile.sync
+      dockerfile: docker/Dockerfile.sync
     environment:
       POSTGRES_URI: "postgres://postgres:postgres@db:5432/postgres?sslmode=disable"
       BITCOIN_NODE_URI: http://bitcoin:18443

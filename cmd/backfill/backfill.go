@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bytes"
 	"context"
 	"database/sql"
 	"log"
@@ -9,9 +8,10 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/spacesprotocol/explorer-backend/pkg/db"
 	"github.com/spacesprotocol/explorer-backend/pkg/node"
-	mysync "github.com/spacesprotocol/explorer-backend/pkg/sync"
+	"github.com/spacesprotocol/explorer-backend/pkg/store"
 
 	_ "github.com/lib/pq"
 	. "github.com/spacesprotocol/explorer-backend/pkg/types"
@@ -38,14 +38,13 @@ func getFastSyncBlockHeight() int32 {
 	return 0
 }
 
-// TODO overwrite already synced blocks after the initial fast sync start
 func main() {
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
 	bitcoinClient := node.NewClient(os.Getenv("BITCOIN_NODE_URI"), os.Getenv("BITCOIN_NODE_USER"), os.Getenv("BITCOIN_NODE_PASSWORD"))
 
 	bc := node.BitcoinClient{Client: bitcoinClient}
 
-	pg, err := sql.Open("postgres", os.Getenv("POSTGRES_URI"))
+	pg, err := pgx.Connect(context.Background(), os.Getenv("POSTGRES_URI"))
 	if err != nil {
 		log.Fatalln(err)
 	}
@@ -65,24 +64,25 @@ func main() {
 
 }
 
-func syncGapBlocks(pg *sql.DB, bc *node.BitcoinClient) error {
+func syncGapBlocks(pg *pgx.Conn, bc *node.BitcoinClient) error {
+	ctx := context.Background()
 	var hash *Bytes
 	var gapEnd int32
 
 	var gapStarted bool
-	height, hash, err := getSyncedHead(pg, bc)
+	height, hash, err := store.GetSyncedHead(pg, bc)
 	if err != nil {
 		return err
 	}
 	log.Printf("found synced block of height %d and hash %s", height, hash)
 
+	q := db.New(pg)
 	for workingHeight := height; workingHeight >= 0; workingHeight-- {
-		q := db.New(pg)
 		ctx := context.Background()
 		block, err := q.GetBlockByHeight(ctx, workingHeight)
 		if err == nil {
 			if !gapStarted {
-				log.Printf("goin down, got block at height %d, it has hash %s", workingHeight, block.Hash)
+				log.Printf("going down, got block at height %d, it has hash %s", workingHeight, block.Hash)
 				continue
 			}
 			gapEnd = workingHeight
@@ -123,14 +123,14 @@ func syncGapBlocks(pg *sql.DB, bc *node.BitcoinClient) error {
 			return err
 		}
 		log.Printf("trying to sync block #%d", block.Height)
-		sqlTx, err := pg.BeginTx(context.Background(), nil)
+		sqlTx, err := pg.BeginTx(ctx, pgx.TxOptions{})
 		if err != nil {
 			return err
 		}
 
-		sqlTx, err = mysync.SyncBlock(block, sqlTx)
+		sqlTx, err = store.StoreBlock(block, sqlTx)
 		if err != nil {
-			sqlTx.Rollback()
+			sqlTx.Rollback(ctx)
 			return err
 		}
 		// if block.Height >= activationBlock {
@@ -144,7 +144,7 @@ func syncGapBlocks(pg *sql.DB, bc *node.BitcoinClient) error {
 		// 		return err
 		// 	}
 		// }
-		err = sqlTx.Commit()
+		err = sqlTx.Commit(ctx)
 		if err != nil {
 			return err
 		}
@@ -152,42 +152,4 @@ func syncGapBlocks(pg *sql.DB, bc *node.BitcoinClient) error {
 	}
 	return nil
 
-}
-
-// detects chain split (reorganization) and
-// returns the height and blockhash of the last block that is identical in the db and in the node
-func getSyncedHead(pg *sql.DB, bc *node.BitcoinClient) (int32, *Bytes, error) {
-	q := db.New(pg)
-	//takes last block from the DB
-	height, err := q.GetBlocksMaxHeight(context.Background())
-	if err != nil {
-		return -1, nil, err
-	}
-	//height is the height of the db block
-	for height >= 0 {
-		//take last block hash from the DB
-		dbHash, err := q.GetBlockHashByHeight(context.Background(), height)
-		if err != nil {
-			return -1, nil, err
-		}
-		//takes the block of same height from the bitcoin node
-		nodeHash, err := bc.GetBlockHash(context.Background(), int(height))
-		if err != nil {
-			return -1, nil, err
-		}
-		// nodeHash *bytes
-		// dbHash Bytes
-		if bytes.Equal(dbHash, *nodeHash) {
-			//marking all the blocks in the DB after the sycned height as orphans
-			if err := q.SetOrphanAfterHeight(context.Background(), height); err != nil {
-				return -1, nil, err
-			}
-			if err := q.SetNegativeHeightToOrphans(context.Background()); err != nil {
-				return -1, nil, err
-			}
-			return height, &dbHash, nil
-		}
-		height -= 1
-	}
-	return -1, nil, nil
 }

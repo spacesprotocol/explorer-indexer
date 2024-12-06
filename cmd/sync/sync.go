@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bytes"
 	"context"
 
 	"log"
@@ -13,7 +12,7 @@ import (
 
 	"github.com/spacesprotocol/explorer-backend/pkg/db"
 	"github.com/spacesprotocol/explorer-backend/pkg/node"
-	"github.com/spacesprotocol/explorer-backend/pkg/sync"
+	"github.com/spacesprotocol/explorer-backend/pkg/store"
 
 	_ "github.com/lib/pq"
 	. "github.com/spacesprotocol/explorer-backend/pkg/types"
@@ -115,7 +114,7 @@ func syncRollouts(ctx context.Context, pg *pgx.Conn, sc *node.SpacesClient) erro
 func syncBlocks(pg *pgx.Conn, bc *node.BitcoinClient, sc *node.SpacesClient) error {
 	ctx := context.Background()
 	var hash *Bytes
-	height, hash, err := getSyncedHead(pg, bc)
+	height, hash, err := store.GetSyncedHead(pg, bc)
 	if err != nil {
 		return err
 	}
@@ -168,7 +167,7 @@ func syncBlocks(pg *pgx.Conn, bc *node.BitcoinClient, sc *node.SpacesClient) err
 			}
 		}()
 
-		tx, err = sync.SyncBlock(block, tx)
+		tx, err = store.StoreBlock(block, tx)
 		if err != nil {
 			return err
 		}
@@ -177,7 +176,7 @@ func syncBlocks(pg *pgx.Conn, bc *node.BitcoinClient, sc *node.SpacesClient) err
 			if err != nil {
 				return err
 			}
-			tx, err = sync.SyncSpacesTransactions(spacesBlock.Transactions, block.Hash, tx)
+			tx, err = store.StoreSpacesTransactions(spacesBlock.Transactions, block.Hash, tx)
 			if err != nil {
 				return err
 			}
@@ -189,42 +188,4 @@ func syncBlocks(pg *pgx.Conn, bc *node.BitcoinClient, sc *node.SpacesClient) err
 		nextBlockHash = block.NextBlockHash
 	}
 	return nil
-}
-
-// detects chain split (reorganization) and
-// returns the height and blockhash of the last block that is identical in the db and in the node
-func getSyncedHead(pg *pgx.Conn, bc *node.BitcoinClient) (int32, *Bytes, error) {
-	q := db.New(pg)
-	//takes last block from the DB
-	height, err := q.GetBlocksMaxHeight(context.Background())
-	if err != nil {
-		return -1, nil, err
-	}
-	//height is the height of the db block
-	for height >= 0 {
-		//take last block hash from the DB
-		dbHash, err := q.GetBlockHashByHeight(context.Background(), height)
-		if err != nil {
-			return -1, nil, err
-		}
-		//takes the block of same height from the bitcoin node
-		nodeHash, err := bc.GetBlockHash(context.Background(), int(height))
-		if err != nil {
-			return -1, nil, err
-		}
-		// nodeHash *bytes
-		// dbHash Bytes
-		if bytes.Equal(dbHash, *nodeHash) {
-			//marking all the blocks in the DB after the sycned height as orphans
-			if err := q.SetOrphanAfterHeight(context.Background(), height); err != nil {
-				return -1, nil, err
-			}
-			if err := q.SetNegativeHeightToOrphans(context.Background()); err != nil {
-				return -1, nil, err
-			}
-			return height, &dbHash, nil
-		}
-		height -= 1
-	}
-	return -1, nil, nil
 }

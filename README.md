@@ -1,7 +1,7 @@
 # Overview
 
 This repository contains the indexer for the spaces protocol explorer. 
-The indexer retrieves the blocks' data from the bitcoin and spaced nodes and stores it into the postgresql database.
+The indexer retrieves the blocks' data from the bitcoin and spaces nodes and stores it into the postgresql database.
 
 ## Install
 
@@ -9,38 +9,71 @@ The indexer retrieves the blocks' data from the bitcoin and spaced nodes and sto
 go mod download
 ```
 
-### Migrations
+## Development
 
-[Goose](https://github.com/pressly/goose) is used for migrations. 
+### Docker
+
+There is a docker compose file for a complete backend setup which makes it easier to work on the [frontend
+part](https://github.com/spacesprotocol/explorer) part. It is  located in `docker` folder which does the following:
+
+- creates postgresql database
+- runs needed migrations for the database
+- runs bitcoin node for regtest network
+- runs spaced node
+- opens several dozens of spaces
+
+Build the docker:
+```
+docker compose -f docker-regtest.yml build
+```
+
+Then run it:
 
 ```
-. ./env
-goose up
+docker compose -f docker-regtest.yml up
 ```
 
-### Local setup
+Docker data is stored in `regtest-data`.
+
+### Manual setup
 
 Run postgresql instance in docker:
 ```
 docker-compose up
 ```
 
-##
+### Migrations
 
-Run: 
+[Goose](https://github.com/pressly/goose) is used for migrations. Migrations are located in `sql/schema`.
 
 ```
+. ./env.example
+goose up
+```
+
+### Blockchain nodes
+
+Run bitcoind and spaced nodes, their URIs should be stored as environment variables which are later used by the sync
+service.
+
+### Sync
+
+Sync is a go service which stores the blockchain data.
+
+```
+. ./env.example
 go run cmd/sync/*
 ```
 
-## Development
+Now you should have a working service.
 
 ### SQLC
 
-Generates idiomatic go code from the .sql types and queries.
+To add create additional sql queries, it's advised to use SQLC. It generates idiomatic go code from the .sql types and queries. Query files are located in `sql/query`.
 
 ```
 go install github.com/kyleconroy/sqlc/cmd/sqlc@latest
 sqlc generate
 ```
+
 
