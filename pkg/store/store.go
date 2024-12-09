@@ -255,7 +255,7 @@ func StoreBitcoinBlock(block *node.Block, tx pgx.Tx) (pgx.Tx, error) {
 }
 
 func UpdateBlockSpender(block *node.Block, tx pgx.Tx) (pgx.Tx, error) {
-	log.Printf("updating spenders of the block %s", block.Height)
+	log.Printf("updating spenders from the block %d", block.Height)
 	q := db.New(tx)
 	for _, transaction := range block.Transactions {
 		if err := updateTxSpenders(q, &transaction); err != nil {

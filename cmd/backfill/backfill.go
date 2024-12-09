@@ -58,10 +58,12 @@ func main() {
 
 		if err := syncGapBlocks(pg, &bc, &sc); err != nil {
 			log.Println(err)
+			time.Sleep(time.Duration(updateInterval) * time.Second)
+			continue
 		}
-		time.Sleep(time.Duration(updateInterval) * time.Second)
+		log.Print("gap has been filled")
+		return
 	}
-
 }
 
 func syncGapBlocks(pg *pgx.Conn, bc *node.BitcoinClient, sc *node.SpacesClient) error {
