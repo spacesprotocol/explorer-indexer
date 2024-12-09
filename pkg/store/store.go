@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"log"
 	"strings"
 
 	"github.com/jackc/pgx/v5"
@@ -237,7 +238,7 @@ func StoreSpacesTransactions(txs []node.MetaTransaction, blockHash Bytes, sqlTx 
 	return sqlTx, nil
 }
 
-func StoreBlock(block *node.Block, tx pgx.Tx) (pgx.Tx, error) {
+func StoreBitcoinBlock(block *node.Block, tx pgx.Tx) (pgx.Tx, error) {
 	q := db.New(tx)
 	blockParams := db.InsertBlockParams{}
 	copier.Copy(&blockParams, &block)
@@ -254,6 +255,7 @@ func StoreBlock(block *node.Block, tx pgx.Tx) (pgx.Tx, error) {
 }
 
 func UpdateBlockSpender(block *node.Block, tx pgx.Tx) (pgx.Tx, error) {
+	log.Printf("updating spenders from the block %d", block.Height)
 	q := db.New(tx)
 	for _, transaction := range block.Transactions {
 		if err := updateTxSpenders(q, &transaction); err != nil {
@@ -405,58 +407,29 @@ func GetSyncedHead(pg *pgx.Conn, bc *node.BitcoinClient) (int32, *Bytes, error) 
 	return -1, nil, nil
 }
 
-// func storeTransaction2(q *db.Queries, transaction *node.Transaction, blockHash *Bytes, txIndex *int32) error {
-// 	transactionParams := db.InsertTransactionParams{}
-// 	copier.Copy(&transactionParams, &transaction)
-// 	var err error
-// 	transactionParams.BlockHash = *blockHash
-// 	var nullableIndex pgtype.Int4
-// 	if txIndex == nil {
-// 		nullableIndex.Valid = false
-// 	} else {
-// 		nullableIndex.Valid = true
-// 		nullableIndex.Int32 = *txIndex
-// 	}
-// 	transactionParams.Index = nullableIndex
-// 	if err = q.InsertTransaction(context.Background(), transactionParams); err != nil {
-// 		return err
-// 	}
-// 	for input_index, txInput := range transaction.Vin {
-// 		txInputParams := db.InsertTxInputParams{}
-// 		copier.Copy(&txInputParams, &txInput)
-// 		txInputParams.BlockHash = *blockHash
-// 		txInputParams.Txid = transactionParams.Txid
-// 		txInputParams.Index = int64(input_index)
-//
-// 		if err := q.InsertTxInput(context.Background(), txInputParams); err != nil {
-// 			return err
-// 		}
-//
-// 		if txInputParams.Coinbase == nil {
-// 			var nullableIndex64 pgtype.Int8
-// 			nullableIndex64.Valid = true
-// 			nullableIndex64.Int64 = int64(input_index)
-// 			setSpenderParams := db.SetSpenderParams{
-// 				// BlockHash:    txInputParams.BlockHash, do i need it?
-// 				Txid:         *(txInputParams.HashPrevout),
-// 				Index:        txInputParams.IndexPrevout,
-// 				SpenderTxid:  &transactionParams.Txid,
-// 				SpenderIndex: nullableIndex64,
-// 			}
-// 			if err = q.SetSpender(context.Background(), setSpenderParams); err != nil {
-// 				return err
-// 			}
-// 		}
-// 	}
-// 	for output_index, txOutput := range transaction.Vout {
-// 		txOutputParams := db.InsertTxOutputParams{}
-// 		txOutputParams.Txid = transactionParams.Txid
-// 		txOutputParams.BlockHash = *blockHash
-// 		copier.Copy(&txOutputParams, &txOutput)
-// 		txOutputParams.Index = int64(output_index)
-// 		if err := q.InsertTxOutput(context.Background(), txOutputParams); err != nil {
-// 			return err
-// 		}
-// 	}
-// 	return nil
-// }
+func StoreBlock(ctx context.Context, pg *pgx.Conn, block *node.Block, sc *node.SpacesClient, activationBlock int32) error {
+	log.Printf("trying to store block #%d", block.Height)
+	tx, err := pg.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+
+	tx, err = StoreBitcoinBlock(block, tx)
+	if err != nil {
+		return err
+	}
+
+	if block.Height >= activationBlock {
+		spacesBlock, err := sc.GetBlockMeta(ctx, block.Hash.String())
+		if err != nil {
+			return err
+		}
+		tx, err = StoreSpacesTransactions(spacesBlock.Transactions, block.Hash, tx)
+		if err != nil {
+			return err
+		}
+	}
+
+	return tx.Commit(ctx)
+}
