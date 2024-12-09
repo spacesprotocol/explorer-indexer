@@ -125,18 +125,18 @@ func syncGapBlocks(pg *pgx.Conn, bc *node.BitcoinClient, sc *node.SpacesClient) 
 			if err := store.StoreBlock(ctx, pg, block, sc, activationBlock); err != nil {
 				return err
 			}
-		}
+		} else {
+			sqlTx, err := pg.Begin(ctx)
+			defer sqlTx.Rollback(ctx)
+			if err != nil {
+				return err
+			}
 
-		sqlTx, err := pg.Begin(ctx)
-		defer sqlTx.Rollback(ctx)
-		if err != nil {
-			return err
+			if sqlTx, err = store.UpdateBlockSpender(block, sqlTx); err != nil {
+				return err
+			}
+			sqlTx.Commit(ctx)
 		}
-
-		if sqlTx, err = store.UpdateBlockSpender(block, sqlTx); err != nil {
-			return err
-		}
-		sqlTx.Commit(ctx)
 
 		nextBlockHash = &block.NextBlockHash
 
