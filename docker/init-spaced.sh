@@ -30,8 +30,8 @@ EOL
     # Mine 101 blocks to make coins spendable
     curl -s -u bitcoin:bitcoin --data-binary "{\"jsonrpc\": \"1.0\", \"id\":\"mine\", \"method\": \"generatetoaddress\", \"params\": [101, \"$ADDRESS\"]}" -H 'content-type: text/plain;' http://bitcoin:18443/
 
-    # Fixed array of asset names
-    ASSETS=(
+    # Fixed array of space names
+    SPACES=(
         "lemon" "watermelon" "artichoke" "ugli" "yuzu" "raspberry" "garlic" "nectarine" "nectarine" "vanilla"
         "broccoli" "cherry" "date" "elderberry" "fig" "grape" "honeydew" "kiwi" "mango" "orange"
         "papaya" "quince" "strawberry" "tangerine" "zucchini" "carrot" "daikon" "eggplant" "fennel" "horseradish"
@@ -39,26 +39,26 @@ EOL
         "spinach" "tomato" "ulluco" "wasabi" "xigua" "yam" "zest" "apple" "banana" "plum"
     )
 
-    # Open 50 assets with fixed names
+    # Open 50 spaces with fixed names
     for i in {0..49}; do
-        ASSET="${ASSETS[$i]}"
-        echo "Opening asset: $ASSET"
-        space-cli --chain regtest open "$ASSET" --fee-rate=1
+        SPACE="${SPACES[$i]}"
+        echo "Opening space: $SPACE"
+        space-cli --chain regtest open "$SPACE" --fee-rate=1
         
         curl -s -u bitcoin:bitcoin --data-binary "{\"jsonrpc\": \"1.0\", \"id\":\"mine\", \"method\": \"generatetoaddress\", \"params\": [1, \"$ADDRESS\"]}" -H 'content-type: text/plain;' http://bitcoin:18443/
-        sleep 1
+        sleep 0.1
     done
 
     # Mine 144 more blocks
     echo "Mining 144 additional blocks..."
     curl -s -u bitcoin:bitcoin --data-binary "{\"jsonrpc\": \"1.0\", \"id\":\"mine\", \"method\": \"generatetoaddress\", \"params\": [144, \"$ADDRESS\"]}" -H 'content-type: text/plain;' http://bitcoin:18443/
 
-    # Send bid transactions for first 10 assets
-    echo "Sending bid transactions for first 10 assets..."
+    # Send bid transactions for first 10 spaces
+    echo "Sending bid transactions for first 10 spaces..."
     for i in {0..9}; do
-        ASSET="${ASSETS[$i]}"
-        echo "Bidding on asset: $ASSET"
-        space-cli --chain regtest bid "$ASSET" 2000
+        SPACE="${SPACES[$i]}"
+        echo "Bidding on space: $SPACE"
+        space-cli --chain regtest bid "$SPACE" 2000 --fee-rate=1
         
         curl -s -u bitcoin:bitcoin --data-binary "{\"jsonrpc\": \"1.0\", \"id\":\"mine\", \"method\": \"generatetoaddress\", \"params\": [1, \"$ADDRESS\"]}" -H 'content-type: text/plain;' http://bitcoin:18443/
         sleep 1

@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"strings"
 
 	"log"
 	"os"
@@ -27,16 +28,16 @@ func getActivationBlock() int32 {
 			return int32(h)
 		}
 	}
-	return 0
+	return -1
 }
 
 func getFastSyncBlockHeight() int32 {
 	if height := os.Getenv("FAST_SYNC_BLOCK_HEIGHT"); height != "" {
 		if h, err := strconv.ParseInt(height, 10, 32); err == nil {
-			return int32(h)
+			return int32(h) - 1
 		}
 	}
-	return 0
+	return -1
 }
 
 func main() {
@@ -73,12 +74,8 @@ func syncRollouts(ctx context.Context, pg *pgx.Conn, sc *node.SpacesClient) erro
 	if err != nil {
 		return err
 	}
-	defer func() {
-		err := tx.Rollback(ctx)
-		if err != nil && err != pgx.ErrTxClosed {
-			log.Fatalf("rollouts sync: cannot rollback sql transaction: %s", err)
-		}
-	}()
+
+	defer tx.Rollback(ctx)
 
 	q := db.New(tx)
 	if err = q.DeleteRollouts(ctx); err != nil {
@@ -121,22 +118,23 @@ func syncBlocks(pg *pgx.Conn, bc *node.BitcoinClient, sc *node.SpacesClient) err
 	log.Printf("found synced block of height %d and hash %s", height, hash)
 
 	if height < fastSyncBlockHeight {
-		hash, err = bc.GetBlockHash(ctx, int(fastSyncBlockHeight-1))
-		if err != nil {
-			return err
+		height = fastSyncBlockHeight
+	}
+
+	height++
+	log.Print("trying to get block ", height)
+	hash, err = bc.GetBlockHash(ctx, int(height))
+	if err != nil {
+		if strings.Contains(err.Error(), "Block height out of range") {
+			return nil
 		}
-	}
-
-	hashString, err := hash.MarshalText()
-	if err != nil {
 		return err
 	}
 
-	block, err := bc.GetBlock(ctx, string(hashString))
+	block, err := bc.GetBlock(ctx, hash.String())
 	if err != nil {
 		return err
 	}
-	nextBlockHash := block.NextBlockHash
 
 	if block.Height >= activationBlock {
 		if err := syncRollouts(ctx, pg, sc); err != nil {
@@ -145,46 +143,21 @@ func syncBlocks(pg *pgx.Conn, bc *node.BitcoinClient, sc *node.SpacesClient) err
 		}
 	}
 
+	if err := store.StoreBlock(ctx, pg, block, sc, activationBlock); err != nil {
+		return err
+	}
+	nextBlockHash := block.NextBlockHash
+
 	for nextBlockHash != nil {
-		nextHashString, err := nextBlockHash.MarshalText()
+		block, err := bc.GetBlock(ctx, nextBlockHash.String())
 		if err != nil {
 			return err
 		}
-		block, err := bc.GetBlock(ctx, string(nextHashString))
-		if err != nil {
-			return err
-		}
-		log.Printf("trying to sync block #%d", block.Height)
 
-		tx, err := pg.BeginTx(ctx, pgx.TxOptions{})
-		if err != nil {
+		if err := store.StoreBlock(ctx, pg, block, sc, activationBlock); err != nil {
 			return err
 		}
-		defer func() {
-			err := tx.Rollback(ctx)
-			if err != nil && err != pgx.ErrTxClosed {
-				log.Fatalf("block sync: cannot rollback sql transaction: %s", err)
-			}
-		}()
 
-		tx, err = store.StoreBlock(block, tx)
-		if err != nil {
-			return err
-		}
-		if block.Height >= activationBlock {
-			spacesBlock, err := sc.GetBlockMeta(ctx, string(nextHashString))
-			if err != nil {
-				return err
-			}
-			tx, err = store.StoreSpacesTransactions(spacesBlock.Transactions, block.Hash, tx)
-			if err != nil {
-				return err
-			}
-		}
-		err = tx.Commit(ctx)
-		if err != nil {
-			return err
-		}
 		nextBlockHash = block.NextBlockHash
 	}
 	return nil

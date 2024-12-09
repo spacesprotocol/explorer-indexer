@@ -13,7 +13,6 @@ import (
 	"github.com/spacesprotocol/explorer-backend/pkg/store"
 
 	_ "github.com/lib/pq"
-	. "github.com/spacesprotocol/explorer-backend/pkg/types"
 )
 
 var activationBlock = getActivationBlock()
@@ -40,8 +39,10 @@ func getFastSyncBlockHeight() int32 {
 func main() {
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
 	bitcoinClient := node.NewClient(os.Getenv("BITCOIN_NODE_URI"), os.Getenv("BITCOIN_NODE_USER"), os.Getenv("BITCOIN_NODE_PASSWORD"))
+	spacesClient := node.NewClient(os.Getenv("SPACES_NODE_URI"), "test", "test")
 
 	bc := node.BitcoinClient{Client: bitcoinClient}
+	sc := node.SpacesClient{Client: spacesClient}
 
 	pg, err := pgx.Connect(context.Background(), os.Getenv("POSTGRES_URI"))
 	if err != nil {
@@ -55,7 +56,7 @@ func main() {
 
 	for {
 
-		if err := syncGapBlocks(pg, &bc); err != nil {
+		if err := syncGapBlocks(pg, &bc, &sc); err != nil {
 			log.Println(err)
 		}
 		time.Sleep(time.Duration(updateInterval) * time.Second)
@@ -63,102 +64,80 @@ func main() {
 
 }
 
-func syncGapBlocks(pg *pgx.Conn, bc *node.BitcoinClient) error {
+func syncGapBlocks(pg *pgx.Conn, bc *node.BitcoinClient, sc *node.SpacesClient) error {
 	ctx := context.Background()
-	var hash *Bytes
-	var gapEnd int32
-
 	var gapStarted bool = false
-	height, hash, err := store.GetSyncedHead(pg, bc)
+	var height, gapBeginning int32
+
+	maxHeight, hash, err := store.GetSyncedHead(pg, bc)
 	if err != nil {
 		return err
 	}
-	log.Printf("found synced block of height %d and hash %s", height, hash)
+	log.Printf("found synced block of height %d and hash %s", maxHeight, hash)
 
 	q := db.New(pg)
-	for workingHeight := height; workingHeight >= 0; workingHeight-- {
-		ctx := context.Background()
-		block, err := q.GetBlockByHeight(ctx, workingHeight)
-
-		if err == nil {
-			if !gapStarted {
-				log.Printf("going down, got block at height %d, it has hash %s", workingHeight, block.Hash)
-				continue
-			}
-			gapEnd = workingHeight
+	for height = maxHeight; ; height-- {
+		if height <= -1 {
+			height = -1
 			break
 		}
 
-		if err == pgx.ErrNoRows {
-			gapStarted = true
-			log.Printf("found no rows at the height %d", workingHeight)
-		} else {
-			log.Fatal(err)
+		block, err := q.GetBlockByHeight(ctx, height)
+		if err == nil {
+			if !gapStarted {
+				log.Printf("going down, got block at height %d with hash %s", height, block.Hash)
+				continue
+			}
+			break
 		}
-	}
-	log.Printf("the gap end is at the height of %d", gapEnd)
-	hash, err = bc.GetBlockHash(context.Background(), int(gapEnd))
-	if err != nil {
+		if err == pgx.ErrNoRows {
+			if !gapStarted {
+				gapBeginning = height
+				log.Print("gap began at ", gapBeginning)
+			}
+			gapStarted = true
+			log.Printf("found gap at height %d", height)
+			continue
+		}
 		return err
 	}
 
-	hashString, err := hash.MarshalText()
-	if err != nil {
-		return err
+	if !gapStarted {
+		log.Printf("no gaps found")
+		return nil
 	}
 
-	block, err := bc.GetBlock(context.Background(), string(hashString))
+	log.Printf("the gap end is at the height of %d", height)
+	nextBlockHash, err := bc.GetBlockHash(context.Background(), int(height+1))
 	if err != nil {
 		return err
 	}
-	nextBlockHash := block.NextBlockHash
 
 	for nextBlockHash != nil {
+		block, err := bc.GetBlock(ctx, nextBlockHash.String())
+		if err != nil {
+			return err
+		}
 
-		nextHashString, err := nextBlockHash.MarshalText()
-		if err != nil {
-			return err
-		}
-		block, err := bc.GetBlock(context.Background(), string(nextHashString))
-		if err != nil {
-			return err
-		}
-		log.Printf("trying to sync block #%d", block.Height)
-		sqlTx, err := pg.BeginTx(ctx, pgx.TxOptions{})
-		if err != nil {
-			return err
-		}
-		defer func() {
-			err := sqlTx.Rollback(ctx)
-			if err != nil && err != pgx.ErrTxClosed {
-				log.Fatalf("block sync: cannot rollback sql transaction: %s", err)
+		if block.Height <= gapBeginning {
+			if err := store.StoreBlock(ctx, pg, block, sc, activationBlock); err != nil {
+				return err
 			}
-		}()
+		}
 
-		if block.Height >= fastSyncBlockHeight {
-			sqlTx, err = store.UpdateBlockSpender(block, sqlTx)
-		} else {
-			sqlTx, err = store.StoreBlock(block, sqlTx)
-		}
+		sqlTx, err := pg.Begin(ctx)
+		defer sqlTx.Rollback(ctx)
 		if err != nil {
 			return err
 		}
-		// if block.Height >= activationBlock {
-		// 	spacesBlock, err := sc.GetBlockMeta(context.Background(), string(nextHashString))
-		// 	if err != nil {
-		// 		return err
-		// 	}
-		// 	sqlTx, err = syncSpacesTransactions(spacesBlock.Transactions, block.Hash, sqlTx)
-		// 	if err != nil {
-		// 		sqlTx.Rollback()
-		// 		return err
-		// 	}
-		// }
-		err = sqlTx.Commit(ctx)
-		if err != nil {
+
+		if sqlTx, err = store.UpdateBlockSpender(block, sqlTx); err != nil {
 			return err
 		}
-		nextBlockHash = block.NextBlockHash
+		sqlTx.Commit(ctx)
+
+		nextBlockHash = &block.NextBlockHash
+
 	}
 	return nil
 
