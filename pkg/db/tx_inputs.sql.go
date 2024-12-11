@@ -96,11 +96,12 @@ type InsertBatchTxInputsParams struct {
 	IndexPrevout int64
 	Sequence     int64
 	Coinbase     *types.Bytes
+	Txinwitness  []types.Bytes
 }
 
 const insertTxInput = `-- name: InsertTxInput :exec
-INSERT INTO tx_inputs (block_hash, txid, index, hash_prevout, index_prevout, sequence, coinbase)
-VALUES ($1, $2, $3, $4, $5, $6, $7)
+INSERT INTO tx_inputs (block_hash, txid, index, hash_prevout, index_prevout, sequence, coinbase, txinwitness)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 `
 
 type InsertTxInputParams struct {
@@ -111,6 +112,7 @@ type InsertTxInputParams struct {
 	IndexPrevout int64
 	Sequence     int64
 	Coinbase     *types.Bytes
+	Txinwitness  []types.Bytes
 }
 
 func (q *Queries) InsertTxInput(ctx context.Context, arg InsertTxInputParams) error {
@@ -122,6 +124,7 @@ func (q *Queries) InsertTxInput(ctx context.Context, arg InsertTxInputParams) er
 		arg.IndexPrevout,
 		arg.Sequence,
 		arg.Coinbase,
+		arg.Txinwitness,
 	)
 	return err
 }

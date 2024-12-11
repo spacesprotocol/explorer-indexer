@@ -36,6 +36,7 @@ func (r iteratorForInsertBatchTxInputs) Values() ([]interface{}, error) {
 		r.rows[0].IndexPrevout,
 		r.rows[0].Sequence,
 		r.rows[0].Coinbase,
+		r.rows[0].Txinwitness,
 	}, nil
 }
 
@@ -44,7 +45,7 @@ func (r iteratorForInsertBatchTxInputs) Err() error {
 }
 
 func (q *Queries) InsertBatchTxInputs(ctx context.Context, arg []InsertBatchTxInputsParams) (int64, error) {
-	return q.db.CopyFrom(ctx, []string{"tx_inputs"}, []string{"block_hash", "txid", "index", "hash_prevout", "index_prevout", "sequence", "coinbase"}, &iteratorForInsertBatchTxInputs{rows: arg})
+	return q.db.CopyFrom(ctx, []string{"tx_inputs"}, []string{"block_hash", "txid", "index", "hash_prevout", "index_prevout", "sequence", "coinbase", "txinwitness"}, &iteratorForInsertBatchTxInputs{rows: arg})
 }
 
 // iteratorForInsertBatchTxOutputs implements pgx.CopyFromSource.

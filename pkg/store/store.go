@@ -320,6 +320,7 @@ func storeTransaction(q *db.Queries, transaction *node.Transaction, blockHash *B
 			IndexPrevout: int64(txInput.IndexPrevout),
 			Sequence:     int64(txInput.Sequence),
 			Coinbase:     txInput.Coinbase,
+			Txinwitness:  txInput.TxinWitness,
 		}
 		inputs = append(inputs, inputParam)
 
