@@ -1,4 +1,4 @@
--- name: UpsertBlock :exec
+-- name: UpsertBlock :one
 INSERT INTO blocks (
     hash,
     size,
@@ -19,18 +19,9 @@ VALUES (
 )
 ON CONFLICT (hash) DO UPDATE
 SET
-    size = EXCLUDED.size,
-    stripped_size = EXCLUDED.stripped_size,
-    weight = EXCLUDED.weight,
     height = EXCLUDED.height,
-    version = EXCLUDED.version,
-    hash_merkle_root = EXCLUDED.hash_merkle_root,
-    time = EXCLUDED.time,
-    median_time = EXCLUDED.median_time,
-    nonce = EXCLUDED.nonce,
-    bits = EXCLUDED.bits,
-    difficulty = EXCLUDED.difficulty,
-    chainwork = EXCLUDED.chainwork;
+    orphan = false
+RETURNING (xmax IS NOT NULL)::boolean AS was_updated;
 
 
 -- name: GetBlocks :many

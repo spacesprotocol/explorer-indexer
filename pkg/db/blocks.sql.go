@@ -230,7 +230,7 @@ func (q *Queries) SetOrphanAfterHeight(ctx context.Context, height int32) error 
 	return err
 }
 
-const upsertBlock = `-- name: UpsertBlock :exec
+const upsertBlock = `-- name: UpsertBlock :one
 INSERT INTO blocks (
     hash,
     size,
@@ -251,18 +251,9 @@ VALUES (
 )
 ON CONFLICT (hash) DO UPDATE
 SET
-    size = EXCLUDED.size,
-    stripped_size = EXCLUDED.stripped_size,
-    weight = EXCLUDED.weight,
     height = EXCLUDED.height,
-    version = EXCLUDED.version,
-    hash_merkle_root = EXCLUDED.hash_merkle_root,
-    time = EXCLUDED.time,
-    median_time = EXCLUDED.median_time,
-    nonce = EXCLUDED.nonce,
-    bits = EXCLUDED.bits,
-    difficulty = EXCLUDED.difficulty,
-    chainwork = EXCLUDED.chainwork
+    orphan = false
+RETURNING (xmax IS NOT NULL)::boolean AS was_updated
 `
 
 type UpsertBlockParams struct {
@@ -281,8 +272,8 @@ type UpsertBlockParams struct {
 	Chainwork      types.Bytes
 }
 
-func (q *Queries) UpsertBlock(ctx context.Context, arg UpsertBlockParams) error {
-	_, err := q.db.Exec(ctx, upsertBlock,
+func (q *Queries) UpsertBlock(ctx context.Context, arg UpsertBlockParams) (bool, error) {
+	row := q.db.QueryRow(ctx, upsertBlock,
 		arg.Hash,
 		arg.Size,
 		arg.StrippedSize,
@@ -297,5 +288,7 @@ func (q *Queries) UpsertBlock(ctx context.Context, arg UpsertBlockParams) error 
 		arg.Difficulty,
 		arg.Chainwork,
 	)
-	return err
+	var was_updated bool
+	err := row.Scan(&was_updated)
+	return was_updated, err
 }
