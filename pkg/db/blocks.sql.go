@@ -212,46 +212,6 @@ func (q *Queries) GetBlocksMaxHeight(ctx context.Context) (int32, error) {
 	return column_1, err
 }
 
-const insertBlock = `-- name: InsertBlock :exec
-INSERT INTO blocks (hash, size, stripped_size, weight, height, version, hash_merkle_root, time, median_time, nonce, bits, difficulty, chainwork)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
-`
-
-type InsertBlockParams struct {
-	Hash           types.Bytes
-	Size           int64
-	StrippedSize   int64
-	Weight         int32
-	Height         int32
-	Version        int32
-	HashMerkleRoot types.Bytes
-	Time           int32
-	MedianTime     int32
-	Nonce          int64
-	Bits           types.Bytes
-	Difficulty     float64
-	Chainwork      types.Bytes
-}
-
-func (q *Queries) InsertBlock(ctx context.Context, arg InsertBlockParams) error {
-	_, err := q.db.Exec(ctx, insertBlock,
-		arg.Hash,
-		arg.Size,
-		arg.StrippedSize,
-		arg.Weight,
-		arg.Height,
-		arg.Version,
-		arg.HashMerkleRoot,
-		arg.Time,
-		arg.MedianTime,
-		arg.Nonce,
-		arg.Bits,
-		arg.Difficulty,
-		arg.Chainwork,
-	)
-	return err
-}
-
 const setNegativeHeightToOrphans = `-- name: SetNegativeHeightToOrphans :exec
 UPDATE blocks SET height = -2 WHERE orphan = true
 `
@@ -267,5 +227,75 @@ UPDATE blocks SET orphan = true WHERE height > $1
 
 func (q *Queries) SetOrphanAfterHeight(ctx context.Context, height int32) error {
 	_, err := q.db.Exec(ctx, setOrphanAfterHeight, height)
+	return err
+}
+
+const upsertBlock = `-- name: UpsertBlock :exec
+INSERT INTO blocks (
+    hash,
+    size,
+    stripped_size,
+    weight,
+    height,
+    version,
+    hash_merkle_root,
+    time,
+    median_time,
+    nonce,
+    bits,
+    difficulty,
+    chainwork
+)
+VALUES (
+    $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13
+)
+ON CONFLICT (hash) DO UPDATE
+SET
+    size = EXCLUDED.size,
+    stripped_size = EXCLUDED.stripped_size,
+    weight = EXCLUDED.weight,
+    height = EXCLUDED.height,
+    version = EXCLUDED.version,
+    hash_merkle_root = EXCLUDED.hash_merkle_root,
+    time = EXCLUDED.time,
+    median_time = EXCLUDED.median_time,
+    nonce = EXCLUDED.nonce,
+    bits = EXCLUDED.bits,
+    difficulty = EXCLUDED.difficulty,
+    chainwork = EXCLUDED.chainwork
+`
+
+type UpsertBlockParams struct {
+	Hash           types.Bytes
+	Size           int64
+	StrippedSize   int64
+	Weight         int32
+	Height         int32
+	Version        int32
+	HashMerkleRoot types.Bytes
+	Time           int32
+	MedianTime     int32
+	Nonce          int64
+	Bits           types.Bytes
+	Difficulty     float64
+	Chainwork      types.Bytes
+}
+
+func (q *Queries) UpsertBlock(ctx context.Context, arg UpsertBlockParams) error {
+	_, err := q.db.Exec(ctx, upsertBlock,
+		arg.Hash,
+		arg.Size,
+		arg.StrippedSize,
+		arg.Weight,
+		arg.Height,
+		arg.Version,
+		arg.HashMerkleRoot,
+		arg.Time,
+		arg.MedianTime,
+		arg.Nonce,
+		arg.Bits,
+		arg.Difficulty,
+		arg.Chainwork,
+	)
 	return err
 }

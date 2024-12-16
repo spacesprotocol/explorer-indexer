@@ -240,9 +240,9 @@ func StoreSpacesTransactions(txs []node.MetaTransaction, blockHash Bytes, sqlTx 
 
 func StoreBitcoinBlock(block *node.Block, tx pgx.Tx) (pgx.Tx, error) {
 	q := db.New(tx)
-	blockParams := db.InsertBlockParams{}
+	blockParams := db.UpsertBlockParams{}
 	copier.Copy(&blockParams, &block)
-	if err := q.InsertBlock(context.Background(), blockParams); err != nil {
+	if err := q.UpsertBlock(context.Background(), blockParams); err != nil {
 		return tx, err
 	}
 	for tx_index, transaction := range block.Transactions {

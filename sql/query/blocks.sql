@@ -1,6 +1,36 @@
--- name: InsertBlock :exec
-INSERT INTO blocks (hash, size, stripped_size, weight, height, version, hash_merkle_root, time, median_time, nonce, bits, difficulty, chainwork)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13);
+-- name: UpsertBlock :exec
+INSERT INTO blocks (
+    hash,
+    size,
+    stripped_size,
+    weight,
+    height,
+    version,
+    hash_merkle_root,
+    time,
+    median_time,
+    nonce,
+    bits,
+    difficulty,
+    chainwork
+)
+VALUES (
+    $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13
+)
+ON CONFLICT (hash) DO UPDATE
+SET
+    size = EXCLUDED.size,
+    stripped_size = EXCLUDED.stripped_size,
+    weight = EXCLUDED.weight,
+    height = EXCLUDED.height,
+    version = EXCLUDED.version,
+    hash_merkle_root = EXCLUDED.hash_merkle_root,
+    time = EXCLUDED.time,
+    median_time = EXCLUDED.median_time,
+    nonce = EXCLUDED.nonce,
+    bits = EXCLUDED.bits,
+    difficulty = EXCLUDED.difficulty,
+    chainwork = EXCLUDED.chainwork;
 
 
 -- name: GetBlocks :many
