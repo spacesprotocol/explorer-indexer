@@ -21,7 +21,7 @@ ON CONFLICT (hash) DO UPDATE
 SET
     height = EXCLUDED.height,
     orphan = false
-RETURNING (xmax IS NOT NULL)::boolean AS was_updated;
+RETURNING (xmax = 0)::boolean AS was_inserted;
 
 
 -- name: GetBlocks :many

@@ -242,11 +242,11 @@ func StoreBitcoinBlock(block *node.Block, tx pgx.Tx) (pgx.Tx, error) {
 	q := db.New(tx)
 	blockParams := db.UpsertBlockParams{}
 	copier.Copy(&blockParams, &block)
-	wasUpdated, err := q.UpsertBlock(context.Background(), blockParams)
+	wasInserted, err := q.UpsertBlock(context.Background(), blockParams)
 	if err != nil {
 		return tx, err
 	}
-	if !wasUpdated {
+	if wasInserted {
 		for tx_index, transaction := range block.Transactions {
 			ind := int32(tx_index)
 			if err := storeTransaction(q, &transaction, &blockParams.Hash, &ind); err != nil {

@@ -253,7 +253,7 @@ ON CONFLICT (hash) DO UPDATE
 SET
     height = EXCLUDED.height,
     orphan = false
-RETURNING (xmax IS NOT NULL)::boolean AS was_updated
+RETURNING (xmax = 0)::boolean AS was_inserted
 `
 
 type UpsertBlockParams struct {
@@ -288,7 +288,7 @@ func (q *Queries) UpsertBlock(ctx context.Context, arg UpsertBlockParams) (bool,
 		arg.Difficulty,
 		arg.Chainwork,
 	)
-	var was_updated bool
-	err := row.Scan(&was_updated)
-	return was_updated, err
+	var was_inserted bool
+	err := row.Scan(&was_inserted)
+	return was_inserted, err
 }
