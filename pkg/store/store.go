@@ -261,14 +261,14 @@ func UpdateBlockSpender(block *node.Block, tx pgx.Tx) (pgx.Tx, error) {
 	log.Printf("updating spenders from the block %d", block.Height)
 	q := db.New(tx)
 	for _, transaction := range block.Transactions {
-		if err := updateTxSpenders(q, &transaction); err != nil {
+		if err := updateTxSpenders(q, &transaction, block.Hash); err != nil {
 			return tx, err
 		}
 	}
 	return tx, nil
 }
 
-func updateTxSpenders(q *db.Queries, transaction *node.Transaction) error {
+func updateTxSpenders(q *db.Queries, transaction *node.Transaction, blockHash Bytes) error {
 	var spenderUpdates []db.SetSpenderParams
 	for input_index, txInput := range transaction.Vin {
 
@@ -277,10 +277,11 @@ func updateTxSpenders(q *db.Queries, transaction *node.Transaction) error {
 			nullableIndex64.Valid = true
 			nullableIndex64.Int64 = int64(input_index)
 			spenderUpdates = append(spenderUpdates, db.SetSpenderParams{
-				Txid:         *(txInput.HashPrevout),
-				Index:        int64(txInput.IndexPrevout),
-				SpenderTxid:  &transaction.Txid,
-				SpenderIndex: nullableIndex64,
+				Txid:             *(txInput.HashPrevout),
+				Index:            int64(txInput.IndexPrevout),
+				SpenderTxid:      &transaction.Txid,
+				SpenderIndex:     nullableIndex64,
+				SpenderBlockHash: &blockHash,
 			})
 		}
 	}
@@ -315,6 +316,13 @@ func storeTransaction(q *db.Queries, transaction *node.Transaction, blockHash *B
 	var spenderUpdates []db.SetSpenderParams
 
 	for input_index, txInput := range transaction.Vin {
+
+		var scriptSig Bytes
+		if txInput.ScriptSig != nil {
+			if err := scriptSig.UnmarshalText([]byte(txInput.ScriptSig.Hex)); err != nil {
+				return fmt.Errorf("failed to unmarshal scriptsig: %w", err)
+			}
+		}
 		inputParam := db.InsertBatchTxInputsParams{
 			BlockHash:    *blockHash,
 			Txid:         transactionParams.Txid,
@@ -324,6 +332,7 @@ func storeTransaction(q *db.Queries, transaction *node.Transaction, blockHash *B
 			Sequence:     int64(txInput.Sequence),
 			Coinbase:     txInput.Coinbase,
 			Txinwitness:  txInput.TxinWitness,
+			Scriptsig:    &scriptSig,
 		}
 		inputs = append(inputs, inputParam)
 
@@ -332,10 +341,11 @@ func storeTransaction(q *db.Queries, transaction *node.Transaction, blockHash *B
 			nullableIndex64.Valid = true
 			nullableIndex64.Int64 = int64(input_index)
 			spenderUpdates = append(spenderUpdates, db.SetSpenderParams{
-				Txid:         *(txInput.HashPrevout),
-				Index:        int64(txInput.IndexPrevout),
-				SpenderTxid:  &transactionParams.Txid,
-				SpenderIndex: nullableIndex64,
+				Txid:             *(txInput.HashPrevout),
+				Index:            int64(txInput.IndexPrevout),
+				SpenderTxid:      &transactionParams.Txid,
+				SpenderIndex:     nullableIndex64,
+				SpenderBlockHash: blockHash,
 			})
 		}
 	}

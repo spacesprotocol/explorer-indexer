@@ -123,15 +123,16 @@ func (q *Queries) InsertTxOutput(ctx context.Context, arg InsertTxOutputParams) 
 
 const setSpender = `-- name: SetSpender :exec
 UPDATE tx_outputs
-SET spender_txid = $3, spender_index = $4
+SET spender_block_hash = $5, spender_txid = $3, spender_index = $4
 WHERE txid = $1 AND index = $2
 `
 
 type SetSpenderParams struct {
-	Txid         types.Bytes
-	Index        int64
-	SpenderTxid  *types.Bytes
-	SpenderIndex pgtype.Int8
+	Txid             types.Bytes
+	Index            int64
+	SpenderTxid      *types.Bytes
+	SpenderIndex     pgtype.Int8
+	SpenderBlockHash *types.Bytes
 }
 
 func (q *Queries) SetSpender(ctx context.Context, arg SetSpenderParams) error {
@@ -140,6 +141,7 @@ func (q *Queries) SetSpender(ctx context.Context, arg SetSpenderParams) error {
 		arg.Index,
 		arg.SpenderTxid,
 		arg.SpenderIndex,
+		arg.SpenderBlockHash,
 	)
 	return err
 }

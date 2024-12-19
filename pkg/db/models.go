@@ -103,6 +103,7 @@ type TxInput struct {
 	Sequence     int64
 	Coinbase     *types.Bytes
 	Txinwitness  []types.Bytes
+	Scriptsig    *types.Bytes
 }
 
 type TxOutput struct {

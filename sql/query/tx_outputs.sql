@@ -21,5 +21,5 @@ ORDER BY index;
 
 -- name: SetSpender :exec
 UPDATE tx_outputs
-SET spender_txid = $3, spender_index = $4
+SET spender_block_hash = $5, spender_txid = $3, spender_index = $4
 WHERE txid = $1 AND index = $2;

@@ -3,3 +3,5 @@ regtest-data/
 *.dump
 dump.sql
 .env
+backfill
+sync

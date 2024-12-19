@@ -12,7 +12,7 @@ import (
 )
 
 const getTxInputsByBlockAndTxid = `-- name: GetTxInputsByBlockAndTxid :many
-SELECT block_hash, txid, index, hash_prevout, index_prevout, sequence, coinbase, txinwitness
+SELECT block_hash, txid, index, hash_prevout, index_prevout, sequence, coinbase, txinwitness, scriptsig
 FROM tx_inputs
 WHERE txid = $1 AND block_hash = $2
 ORDER BY index
@@ -41,6 +41,7 @@ func (q *Queries) GetTxInputsByBlockAndTxid(ctx context.Context, arg GetTxInputs
 			&i.Sequence,
 			&i.Coinbase,
 			&i.Txinwitness,
+			&i.Scriptsig,
 		); err != nil {
 			return nil, err
 		}
@@ -53,7 +54,7 @@ func (q *Queries) GetTxInputsByBlockAndTxid(ctx context.Context, arg GetTxInputs
 }
 
 const getTxInputsByTxid = `-- name: GetTxInputsByTxid :many
-SELECT block_hash, txid, index, hash_prevout, index_prevout, sequence, coinbase, txinwitness
+SELECT block_hash, txid, index, hash_prevout, index_prevout, sequence, coinbase, txinwitness, scriptsig
 FROM tx_inputs
 WHERE txid = $1
 ORDER BY index
@@ -77,6 +78,7 @@ func (q *Queries) GetTxInputsByTxid(ctx context.Context, txid types.Bytes) ([]Tx
 			&i.Sequence,
 			&i.Coinbase,
 			&i.Txinwitness,
+			&i.Scriptsig,
 		); err != nil {
 			return nil, err
 		}
@@ -97,11 +99,12 @@ type InsertBatchTxInputsParams struct {
 	Sequence     int64
 	Coinbase     *types.Bytes
 	Txinwitness  []types.Bytes
+	Scriptsig    *types.Bytes
 }
 
 const insertTxInput = `-- name: InsertTxInput :exec
-INSERT INTO tx_inputs (block_hash, txid, index, hash_prevout, index_prevout, sequence, coinbase, txinwitness)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+INSERT INTO tx_inputs (block_hash, txid, index, hash_prevout, index_prevout, sequence, coinbase, txinwitness, scriptSig)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 `
 
 type InsertTxInputParams struct {
@@ -113,6 +116,7 @@ type InsertTxInputParams struct {
 	Sequence     int64
 	Coinbase     *types.Bytes
 	Txinwitness  []types.Bytes
+	Scriptsig    *types.Bytes
 }
 
 func (q *Queries) InsertTxInput(ctx context.Context, arg InsertTxInputParams) error {
@@ -125,6 +129,7 @@ func (q *Queries) InsertTxInput(ctx context.Context, arg InsertTxInputParams) er
 		arg.Sequence,
 		arg.Coinbase,
 		arg.Txinwitness,
+		arg.Scriptsig,
 	)
 	return err
 }

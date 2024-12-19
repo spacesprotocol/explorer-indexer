@@ -1,11 +1,11 @@
 -- name: InsertTxInput :exec
-INSERT INTO tx_inputs (block_hash, txid, index, hash_prevout, index_prevout, sequence, coinbase, txinwitness)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8);
+INSERT INTO tx_inputs (block_hash, txid, index, hash_prevout, index_prevout, sequence, coinbase, txinwitness, scriptSig)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9);
 
 
 -- name: InsertBatchTxInputs :copyfrom
-INSERT INTO tx_inputs (block_hash, txid, index, hash_prevout, index_prevout, sequence, coinbase, txinwitness)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8);
+INSERT INTO tx_inputs (block_hash, txid, index, hash_prevout, index_prevout, sequence, coinbase, txinwitness, scriptSig)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9);
 
 
 -- name: GetTxInputsByTxid :many
