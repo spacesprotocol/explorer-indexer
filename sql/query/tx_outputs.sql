@@ -23,3 +23,7 @@ ORDER BY index;
 UPDATE tx_outputs
 SET spender_block_hash = $5, spender_txid = $3, spender_index = $4
 WHERE txid = $1 AND index = $2;
+
+-- name: DeleteMempoolTxOutputs :exec
+DELETE FROM tx_outputs
+WHERE block_hash = '\xdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef';

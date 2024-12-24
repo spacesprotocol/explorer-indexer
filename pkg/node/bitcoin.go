@@ -65,30 +65,37 @@ func (client *BitcoinClient) GetBestBlockHash(ctx context.Context) (*Bytes, erro
 	return blockHash, err
 }
 
-// func (client *BitcoinClient) GetSpace(space string) (*Space, error) {
-// 	if len(space) > 0 && space[0] != '@' {
-// 		space = "@" + space
-// 	}
-// 	ctx := context.Background()
-// 	spaceInfo := new(Space)
-// 	err := client.Rpc(ctx, "getspace", []interface{}{space}, spaceInfo)
-// 	if err != nil {
-// 		log.Print(err)
-// 		return nil, err
-// 	}
-// 	return spaceInfo, err
-// }
-//
-// func (client *BitcoinClient) GetSpaceOwner(space string) ([]byte, error) {
-// 	if len(space) > 0 && space[0] != '@' {
-// 		space = "@" + space
-// 	}
-// 	ctx := context.Background()
-// 	var spaceOwner []byte
-// 	err := client.Rpc(ctx, "getspaceowner", []interface{}{space}, spaceOwner)
-// 	if err != nil {
-// 		log.Print(err)
-// 		return nil, err
-// 	}
-// 	return spaceOwner, err
-// }
+func (client *BitcoinClient) GetTransaction(ctx context.Context, txId string) (*Transaction, error) {
+	tx := new(Transaction)
+	err := client.Rpc(ctx, "getrawtransaction", []interface{}{txId, 2}, tx)
+	if err != nil {
+		return nil, err
+	}
+	return tx, err
+}
+
+func (client *BitcoinClient) GetMempoolTxs(ctx context.Context) ([]Transaction, error) {
+	var txids []string
+	var txs []Transaction
+	err := client.Rpc(ctx, "getrawmempool", nil, &txids)
+	if err != nil {
+		return nil, err
+	}
+	for _, txid := range txids {
+		tx, err := client.GetTransaction(context.Background(), txid)
+		if err != nil {
+			return nil, err
+		}
+		txs = append(txs, *tx)
+	}
+	return txs, nil
+}
+
+func (client *BitcoinClient) GetMempoolTxIds(ctx context.Context) ([]string, error) {
+	var txids []string
+	err := client.Rpc(ctx, "getrawmempool", nil, &txids)
+	if err != nil {
+		return nil, err
+	}
+	return txids, nil
+}

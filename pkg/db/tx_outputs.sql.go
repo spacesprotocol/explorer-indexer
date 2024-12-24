@@ -12,6 +12,16 @@ import (
 	"github.com/spacesprotocol/explorer-backend/pkg/types"
 )
 
+const deleteMempoolTxOutputs = `-- name: DeleteMempoolTxOutputs :exec
+DELETE FROM tx_outputs
+WHERE block_hash = '\xdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef'
+`
+
+func (q *Queries) DeleteMempoolTxOutputs(ctx context.Context) error {
+	_, err := q.db.Exec(ctx, deleteMempoolTxOutputs)
+	return err
+}
+
 const getTxOutputsByBlockAndTxid = `-- name: GetTxOutputsByBlockAndTxid :many
 SELECT block_hash, txid, index, value, scriptpubkey, spender_txid, spender_index, spender_block_hash
 FROM tx_outputs

@@ -29,3 +29,8 @@ VALUES ($1, $2, $3);
 
 -- name: DeleteRollouts :exec
 DELETE FROM rollouts; 
+
+
+-- name: DeleteMempoolVmetaouts :exec
+DELETE FROM vmetaouts
+WHERE block_hash = '\xdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef';

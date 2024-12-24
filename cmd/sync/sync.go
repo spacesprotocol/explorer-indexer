@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jinzhu/copier"
 
 	"github.com/spacesprotocol/explorer-backend/pkg/db"
 	"github.com/spacesprotocol/explorer-backend/pkg/node"
@@ -21,6 +22,8 @@ import (
 
 var activationBlock = getActivationBlock()
 var fastSyncBlockHeight = getFastSyncBlockHeight()
+
+const deadbeefString = "deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef"
 
 func getActivationBlock() int32 {
 	if height := os.Getenv("ACTIVATION_BLOCK_HEIGHT"); height != "" {
@@ -64,20 +67,25 @@ func main() {
 			log.Println(err)
 			time.Sleep(time.Second)
 		}
+
+		if err := syncMempool(pg, &bc, &sc); err != nil {
+			log.Println(err)
+		}
+
 		time.Sleep(time.Duration(updateInterval) * time.Second)
 	}
 
 }
 
 func syncRollouts(ctx context.Context, pg *pgx.Conn, sc *node.SpacesClient) error {
-	tx, err := pg.BeginTx(ctx, pgx.TxOptions{})
+	sqlTx, err := pg.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		return err
 	}
 
-	defer tx.Rollback(ctx)
+	defer sqlTx.Rollback(ctx)
 
-	q := db.New(tx)
+	q := db.New(sqlTx)
 	if err = q.DeleteRollouts(ctx); err != nil {
 		return err
 	}
@@ -102,7 +110,7 @@ func syncRollouts(ctx context.Context, pg *pgx.Conn, sc *node.SpacesClient) erro
 			}
 		}
 	}
-	if err = tx.Commit(ctx); err != nil {
+	if err = sqlTx.Commit(ctx); err != nil {
 		return err
 	}
 	return nil
@@ -161,4 +169,76 @@ func syncBlocks(pg *pgx.Conn, bc *node.BitcoinClient, sc *node.SpacesClient) err
 		nextBlockHash = block.NextBlockHash
 	}
 	return nil
+}
+
+func syncMempool(pg *pgx.Conn, bc *node.BitcoinClient, sc *node.SpacesClient) error {
+
+	txIds, err := bc.GetMempoolTxIds(context.Background())
+	if err != nil {
+		return err
+	}
+	sqlTx, err := pg.BeginTx(context.Background(), pgx.TxOptions{})
+	if err != nil {
+		return err
+	}
+	defer sqlTx.Rollback(context.Background())
+	q := db.New(sqlTx)
+
+	if err = q.DeleteMempoolVmetaouts(context.Background()); err != nil {
+		return err
+	}
+
+	if err = q.DeleteMempoolTxOutputs(context.Background()); err != nil {
+		return err
+	}
+
+	if err = q.DeleteMempoolTxInputs(context.Background()); err != nil {
+		return err
+	}
+
+	if err = q.DeleteMempoolTransactions(context.Background()); err != nil {
+		return err
+	}
+
+	tx := new(node.Transaction)
+	metaTx := new(node.MetaTransaction)
+	var deadbeef Bytes
+	deadbeef.UnmarshalString(deadbeefString)
+
+	for tx_index, txid := range txIds {
+		ind := int32(tx_index)
+		log.Printf("storing mempool tx %s and index %d", txid, ind)
+		transaction, err := bc.GetTransaction(context.Background(), txid)
+		if err != nil {
+			return err
+		}
+		metaTransaction, err := sc.GetTxMeta(context.Background(), txid)
+		// if err != nil {
+		// 	return err
+		// }
+
+		copier.Copy(&tx, &transaction)
+		err = store.StoreTransaction(q, tx, &deadbeef, &ind)
+		if err != nil {
+			return err
+		}
+
+		copier.Copy(&metaTx, metaTransaction)
+		sqlTx, err = store.StoreSpacesTransaction(*metaTx, deadbeef, sqlTx)
+		if err != nil {
+			return err
+		}
+	}
+
+	// for tx_index, transaction := range txs {
+	// 	ind := int32(tx_index)
+	// 	if err := store.StoreTransaction(q, &tx, &deadbeef, &ind); err != nil {
+	// 		return err
+	// 	}
+	// }
+
+	if err = sqlTx.Commit(context.Background()); err != nil {
+		return err
+	}
+	return err
 }

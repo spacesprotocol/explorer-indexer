@@ -17,116 +17,260 @@ import (
 )
 
 func StoreSpacesTransactions(txs []node.MetaTransaction, blockHash Bytes, sqlTx pgx.Tx) (pgx.Tx, error) {
-	q := db.New(sqlTx)
 	for _, tx := range txs {
-		for _, create := range tx.Creates {
-			vmet := db.InsertVMetaOutParams{
-				BlockHash:    blockHash,
-				Txid:         tx.TxID,
-				Value:        pgtype.Int8{Int64: int64(create.Value), Valid: true},
-				Scriptpubkey: &create.ScriptPubKey,
-			}
-			if create.Name != "" {
-				if create.Name[0] == '@' {
-					vmet.Name = pgtype.Text{
-						String: create.Name[1:],
-						Valid:  true,
-					}
-				} else {
-					vmet.Name = pgtype.Text{
-						String: create.Name,
-						Valid:  true,
-					}
-				}
-			}
+		sqlTx, err := StoreSpacesTransaction(tx, blockHash, sqlTx)
+		if err != nil {
+			return sqlTx, err
+		}
+	}
+	return sqlTx, nil
 
-			if create.Covenant.Type != "" {
-				switch strings.ToUpper(create.Covenant.Type) {
-				case "BID":
-					vmet.Action = db.NullCovenantAction{
-						CovenantAction: db.CovenantActionBID,
-						Valid:          true,
-					}
-				case "RESERVE":
-					vmet.Action = db.NullCovenantAction{
-						CovenantAction: db.CovenantActionRESERVE,
-						Valid:          true,
-					}
-				case "TRANSFER":
-					vmet.Action = db.NullCovenantAction{
-						CovenantAction: db.CovenantActionTRANSFER,
-						Valid:          true,
-					}
-				case "ROLLOUT":
-					vmet.Action = db.NullCovenantAction{
-						CovenantAction: db.CovenantActionROLLOUT,
-						Valid:          true,
-					}
-				case "REVOKE":
-					vmet.Action = db.NullCovenantAction{
-						CovenantAction: db.CovenantActionREVOKE,
-						Valid:          true,
-					}
-				default:
-					return sqlTx, fmt.Errorf("unknown covenant action: %s", create.Covenant.Type)
-				}
+	// q := db.New(sqlTx)
+	// for _, tx := range txs {
+	// 	for _, create := range tx.Creates {
+	// 		vmet := db.InsertVMetaOutParams{
+	// 			BlockHash:    blockHash,
+	// 			Txid:         tx.TxID,
+	// 			Value:        pgtype.Int8{Int64: int64(create.Value), Valid: true},
+	// 			Scriptpubkey: &create.ScriptPubKey,
+	// 		}
+	// 		if create.Name != "" {
+	// 			if create.Name[0] == '@' {
+	// 				vmet.Name = pgtype.Text{
+	// 					String: create.Name[1:],
+	// 					Valid:  true,
+	// 				}
+	// 			} else {
+	// 				vmet.Name = pgtype.Text{
+	// 					String: create.Name,
+	// 					Valid:  true,
+	// 				}
+	// 			}
+	// 		}
+	//
+	// 		if create.Covenant.Type != "" {
+	// 			switch strings.ToUpper(create.Covenant.Type) {
+	// 			case "BID":
+	// 				vmet.Action = db.NullCovenantAction{
+	// 					CovenantAction: db.CovenantActionBID,
+	// 					Valid:          true,
+	// 				}
+	// 			case "RESERVE":
+	// 				vmet.Action = db.NullCovenantAction{
+	// 					CovenantAction: db.CovenantActionRESERVE,
+	// 					Valid:          true,
+	// 				}
+	// 			case "TRANSFER":
+	// 				vmet.Action = db.NullCovenantAction{
+	// 					CovenantAction: db.CovenantActionTRANSFER,
+	// 					Valid:          true,
+	// 				}
+	// 			case "ROLLOUT":
+	// 				vmet.Action = db.NullCovenantAction{
+	// 					CovenantAction: db.CovenantActionROLLOUT,
+	// 					Valid:          true,
+	// 				}
+	// 			case "REVOKE":
+	// 				vmet.Action = db.NullCovenantAction{
+	// 					CovenantAction: db.CovenantActionREVOKE,
+	// 					Valid:          true,
+	// 				}
+	// 			default:
+	// 				return sqlTx, fmt.Errorf("unknown covenant action: %s", create.Covenant.Type)
+	// 			}
+	//
+	// 			if create.Covenant.BurnIncrement != nil {
+	// 				vmet.BurnIncrement = pgtype.Int8{Int64: int64(*create.Covenant.BurnIncrement), Valid: true}
+	// 			}
+	//
+	// 			if create.Covenant.TotalBurned != nil {
+	// 				vmet.TotalBurned = pgtype.Int8{Int64: int64(*create.Covenant.TotalBurned), Valid: true}
+	// 			}
+	//
+	// 			if create.Covenant.ClaimHeight != nil {
+	// 				vmet.ClaimHeight = pgtype.Int8{Int64: int64(*create.Covenant.ClaimHeight), Valid: true}
+	// 			}
+	//
+	// 			if create.Covenant.ExpireHeight != nil {
+	// 				vmet.ExpireHeight = pgtype.Int8{Int64: int64(*create.Covenant.ExpireHeight), Valid: true}
+	// 			}
+	//
+	// 			if create.Covenant.Signature != nil {
+	// 				vmet.Signature = &create.Covenant.Signature
+	// 			}
+	// 		}
+	//
+	// 		if err := q.InsertVMetaOut(context.Background(), vmet); err != nil {
+	// 			return sqlTx, err
+	// 		}
+	// 	}
+	//
+	// 	for _, update := range tx.Updates {
+	// 		vmet := db.InsertVMetaOutParams{
+	// 			BlockHash:    blockHash,
+	// 			Txid:         tx.TxID,
+	// 			Value:        pgtype.Int8{Int64: int64(update.Output.Value), Valid: true},
+	// 			Scriptpubkey: &update.Output.ScriptPubKey,
+	// 		}
+	//
+	// 		if update.Priority != 0 {
+	// 			vmet.Priority = pgtype.Int8{Int64: int64(update.Priority), Valid: true}
+	// 		}
+	//
+	// 		if update.Reason != "" {
+	// 			vmet.Reason = pgtype.Text{String: update.Reason, Valid: true}
+	// 		}
+	//
+	// 		if update.Output.Name != "" {
+	// 			if update.Output.Name[0] == '@' {
+	// 				vmet.Name = pgtype.Text{
+	// 					String: update.Output.Name[1:],
+	// 					Valid:  true,
+	// 				}
+	// 			} else {
+	// 				vmet.Name = pgtype.Text{
+	// 					String: update.Output.Name,
+	// 					Valid:  true,
+	// 				}
+	// 			}
+	// 		}
+	// 		switch strings.ToUpper(update.Type) {
+	// 		case "BID":
+	// 			vmet.Action = db.NullCovenantAction{
+	// 				CovenantAction: db.CovenantActionBID,
+	// 				Valid:          true,
+	// 			}
+	// 		case "RESERVE":
+	// 			vmet.Action = db.NullCovenantAction{
+	// 				CovenantAction: db.CovenantActionRESERVE,
+	// 				Valid:          true,
+	// 			}
+	// 		case "TRANSFER":
+	// 			vmet.Action = db.NullCovenantAction{
+	// 				CovenantAction: db.CovenantActionTRANSFER,
+	// 				Valid:          true,
+	// 			}
+	// 		case "ROLLOUT":
+	// 			vmet.Action = db.NullCovenantAction{
+	// 				CovenantAction: db.CovenantActionROLLOUT,
+	// 				Valid:          true,
+	// 			}
+	// 		case "REVOKE":
+	// 			vmet.Action = db.NullCovenantAction{
+	// 				CovenantAction: db.CovenantActionREVOKE,
+	// 				Valid:          true,
+	// 			}
+	// 		default:
+	// 			return sqlTx, fmt.Errorf("unknown covenant action: %s", update.Type)
+	// 		}
+	// 		covenant := update.Output.Covenant
+	// 		if covenant.BurnIncrement != nil {
+	// 			vmet.BurnIncrement = pgtype.Int8{
+	// 				Int64: int64(*covenant.BurnIncrement),
+	// 				Valid: true,
+	// 			}
+	// 		}
+	//
+	// 		if covenant.TotalBurned != nil {
+	// 			vmet.TotalBurned = pgtype.Int8{
+	// 				Int64: int64(*covenant.TotalBurned),
+	// 				Valid: true,
+	// 			}
+	// 		}
+	//
+	// 		if covenant.ClaimHeight != nil {
+	// 			vmet.ClaimHeight = pgtype.Int8{
+	// 				Int64: int64(*covenant.ClaimHeight),
+	// 				Valid: true,
+	// 			}
+	// 		}
+	//
+	// 		if covenant.ExpireHeight != nil {
+	// 			vmet.ExpireHeight = pgtype.Int8{
+	// 				Int64: int64(*covenant.ExpireHeight),
+	// 				Valid: true,
+	// 			}
+	// 		}
+	//
+	// 		if covenant.Signature != nil {
+	// 			vmet.Signature = &covenant.Signature
+	// 		}
+	//
+	// 		if err := q.InsertVMetaOut(context.Background(), vmet); err != nil {
+	// 			return sqlTx, err
+	// 		}
+	//
+	// 	}
+	//
+	// 	for _, spend := range tx.Spends {
+	// 		vmet := db.InsertVMetaOutParams{
+	// 			BlockHash: blockHash,
+	// 			Txid:      tx.TxID,
+	// 		}
+	//
+	// 		if spend.ScriptError != nil {
+	// 			if spend.ScriptError.Name != "" {
+	// 				if spend.ScriptError.Name[0] == '@' {
+	// 					vmet.Name = pgtype.Text{
+	// 						String: spend.ScriptError.Name[1:],
+	// 						Valid:  true,
+	// 					}
+	// 				} else {
+	// 					vmet.Name = pgtype.Text{
+	// 						String: spend.ScriptError.Name,
+	// 						Valid:  true,
+	// 					}
+	// 				}
+	// 			}
+	//
+	// 			if spend.ScriptError.Reason != "" {
+	// 				vmet.ScriptError = pgtype.Text{String: spend.ScriptError.Reason, Valid: true}
+	// 			}
+	//
+	// 			//TODO handle script error types gracefully
+	// 			if strings.ToUpper(spend.ScriptError.Type) == "REJECT" {
+	// 				vmet.Action = db.NullCovenantAction{CovenantAction: db.CovenantActionREJECT, Valid: true}
+	// 			} else {
+	// 				vmet.Action = db.NullCovenantAction{CovenantAction: db.CovenantActionREJECT, Valid: true}
+	// 				vmet.ScriptError = pgtype.Text{String: spend.ScriptError.Reason + string(spend.ScriptError.Type), Valid: true}
+	// 			}
+	// 		}
+	//
+	// 		if err := q.InsertVMetaOut(context.Background(), vmet); err != nil {
+	// 			return sqlTx, err
+	// 		}
+	//
+	// 	}
+	// }
+	//
+	// return sqlTx, nil
+}
 
-				if create.Covenant.BurnIncrement != nil {
-					vmet.BurnIncrement = pgtype.Int8{Int64: int64(*create.Covenant.BurnIncrement), Valid: true}
+func StoreSpacesTransaction(tx node.MetaTransaction, blockHash Bytes, sqlTx pgx.Tx) (pgx.Tx, error) {
+	q := db.New(sqlTx)
+	for _, create := range tx.Creates {
+		vmet := db.InsertVMetaOutParams{
+			BlockHash:    blockHash,
+			Txid:         tx.TxID,
+			Value:        pgtype.Int8{Int64: int64(create.Value), Valid: true},
+			Scriptpubkey: &create.ScriptPubKey,
+		}
+		if create.Name != "" {
+			if create.Name[0] == '@' {
+				vmet.Name = pgtype.Text{
+					String: create.Name[1:],
+					Valid:  true,
 				}
-
-				if create.Covenant.TotalBurned != nil {
-					vmet.TotalBurned = pgtype.Int8{Int64: int64(*create.Covenant.TotalBurned), Valid: true}
+			} else {
+				vmet.Name = pgtype.Text{
+					String: create.Name,
+					Valid:  true,
 				}
-
-				if create.Covenant.ClaimHeight != nil {
-					vmet.ClaimHeight = pgtype.Int8{Int64: int64(*create.Covenant.ClaimHeight), Valid: true}
-				}
-
-				if create.Covenant.ExpireHeight != nil {
-					vmet.ExpireHeight = pgtype.Int8{Int64: int64(*create.Covenant.ExpireHeight), Valid: true}
-				}
-
-				if create.Covenant.Signature != nil {
-					vmet.Signature = &create.Covenant.Signature
-				}
-			}
-
-			if err := q.InsertVMetaOut(context.Background(), vmet); err != nil {
-				return sqlTx, err
 			}
 		}
 
-		for _, update := range tx.Updates {
-			vmet := db.InsertVMetaOutParams{
-				BlockHash:    blockHash,
-				Txid:         tx.TxID,
-				Value:        pgtype.Int8{Int64: int64(update.Output.Value), Valid: true},
-				Scriptpubkey: &update.Output.ScriptPubKey,
-			}
-
-			if update.Priority != 0 {
-				vmet.Priority = pgtype.Int8{Int64: int64(update.Priority), Valid: true}
-			}
-
-			if update.Reason != "" {
-				vmet.Reason = pgtype.Text{String: update.Reason, Valid: true}
-			}
-
-			if update.Output.Name != "" {
-				if update.Output.Name[0] == '@' {
-					vmet.Name = pgtype.Text{
-						String: update.Output.Name[1:],
-						Valid:  true,
-					}
-				} else {
-					vmet.Name = pgtype.Text{
-						String: update.Output.Name,
-						Valid:  true,
-					}
-				}
-			}
-			switch strings.ToUpper(update.Type) {
+		if create.Covenant.Type != "" {
+			switch strings.ToUpper(create.Covenant.Type) {
 			case "BID":
 				vmet.Action = db.NullCovenantAction{
 					CovenantAction: db.CovenantActionBID,
@@ -153,86 +297,170 @@ func StoreSpacesTransactions(txs []node.MetaTransaction, blockHash Bytes, sqlTx 
 					Valid:          true,
 				}
 			default:
-				return sqlTx, fmt.Errorf("unknown covenant action: %s", update.Type)
-			}
-			covenant := update.Output.Covenant
-			if covenant.BurnIncrement != nil {
-				vmet.BurnIncrement = pgtype.Int8{
-					Int64: int64(*covenant.BurnIncrement),
-					Valid: true,
-				}
+				return sqlTx, fmt.Errorf("unknown covenant action: %s", create.Covenant.Type)
 			}
 
-			if covenant.TotalBurned != nil {
-				vmet.TotalBurned = pgtype.Int8{
-					Int64: int64(*covenant.TotalBurned),
-					Valid: true,
-				}
+			if create.Covenant.BurnIncrement != nil {
+				vmet.BurnIncrement = pgtype.Int8{Int64: int64(*create.Covenant.BurnIncrement), Valid: true}
 			}
 
-			if covenant.ClaimHeight != nil {
-				vmet.ClaimHeight = pgtype.Int8{
-					Int64: int64(*covenant.ClaimHeight),
-					Valid: true,
-				}
+			if create.Covenant.TotalBurned != nil {
+				vmet.TotalBurned = pgtype.Int8{Int64: int64(*create.Covenant.TotalBurned), Valid: true}
 			}
 
-			if covenant.ExpireHeight != nil {
-				vmet.ExpireHeight = pgtype.Int8{
-					Int64: int64(*covenant.ExpireHeight),
-					Valid: true,
-				}
+			if create.Covenant.ClaimHeight != nil {
+				vmet.ClaimHeight = pgtype.Int8{Int64: int64(*create.Covenant.ClaimHeight), Valid: true}
 			}
 
-			if covenant.Signature != nil {
-				vmet.Signature = &covenant.Signature
+			if create.Covenant.ExpireHeight != nil {
+				vmet.ExpireHeight = pgtype.Int8{Int64: int64(*create.Covenant.ExpireHeight), Valid: true}
 			}
 
-			if err := q.InsertVMetaOut(context.Background(), vmet); err != nil {
-				return sqlTx, err
+			if create.Covenant.Signature != nil {
+				vmet.Signature = &create.Covenant.Signature
 			}
-
 		}
 
-		for _, spend := range tx.Spends {
-			vmet := db.InsertVMetaOutParams{
-				BlockHash: blockHash,
-				Txid:      tx.TxID,
-			}
+		if err := q.InsertVMetaOut(context.Background(), vmet); err != nil {
+			return sqlTx, err
+		}
+	}
 
-			if spend.ScriptError != nil {
-				if spend.ScriptError.Name != "" {
-					if spend.ScriptError.Name[0] == '@' {
-						vmet.Name = pgtype.Text{
-							String: spend.ScriptError.Name[1:],
-							Valid:  true,
-						}
-					} else {
-						vmet.Name = pgtype.Text{
-							String: spend.ScriptError.Name,
-							Valid:  true,
-						}
+	for _, update := range tx.Updates {
+		vmet := db.InsertVMetaOutParams{
+			BlockHash:    blockHash,
+			Txid:         tx.TxID,
+			Value:        pgtype.Int8{Int64: int64(update.Output.Value), Valid: true},
+			Scriptpubkey: &update.Output.ScriptPubKey,
+		}
+
+		if update.Priority != 0 {
+			vmet.Priority = pgtype.Int8{Int64: int64(update.Priority), Valid: true}
+		}
+
+		if update.Reason != "" {
+			vmet.Reason = pgtype.Text{String: update.Reason, Valid: true}
+		}
+
+		if update.Output.Name != "" {
+			if update.Output.Name[0] == '@' {
+				vmet.Name = pgtype.Text{
+					String: update.Output.Name[1:],
+					Valid:  true,
+				}
+			} else {
+				vmet.Name = pgtype.Text{
+					String: update.Output.Name,
+					Valid:  true,
+				}
+			}
+		}
+		switch strings.ToUpper(update.Type) {
+		case "BID":
+			vmet.Action = db.NullCovenantAction{
+				CovenantAction: db.CovenantActionBID,
+				Valid:          true,
+			}
+		case "RESERVE":
+			vmet.Action = db.NullCovenantAction{
+				CovenantAction: db.CovenantActionRESERVE,
+				Valid:          true,
+			}
+		case "TRANSFER":
+			vmet.Action = db.NullCovenantAction{
+				CovenantAction: db.CovenantActionTRANSFER,
+				Valid:          true,
+			}
+		case "ROLLOUT":
+			vmet.Action = db.NullCovenantAction{
+				CovenantAction: db.CovenantActionROLLOUT,
+				Valid:          true,
+			}
+		case "REVOKE":
+			vmet.Action = db.NullCovenantAction{
+				CovenantAction: db.CovenantActionREVOKE,
+				Valid:          true,
+			}
+		default:
+			return sqlTx, fmt.Errorf("unknown covenant action: %s", update.Type)
+		}
+		covenant := update.Output.Covenant
+		if covenant.BurnIncrement != nil {
+			vmet.BurnIncrement = pgtype.Int8{
+				Int64: int64(*covenant.BurnIncrement),
+				Valid: true,
+			}
+		}
+
+		if covenant.TotalBurned != nil {
+			vmet.TotalBurned = pgtype.Int8{
+				Int64: int64(*covenant.TotalBurned),
+				Valid: true,
+			}
+		}
+
+		if covenant.ClaimHeight != nil {
+			vmet.ClaimHeight = pgtype.Int8{
+				Int64: int64(*covenant.ClaimHeight),
+				Valid: true,
+			}
+		}
+
+		if covenant.ExpireHeight != nil {
+			vmet.ExpireHeight = pgtype.Int8{
+				Int64: int64(*covenant.ExpireHeight),
+				Valid: true,
+			}
+		}
+
+		if covenant.Signature != nil {
+			vmet.Signature = &covenant.Signature
+		}
+
+		if err := q.InsertVMetaOut(context.Background(), vmet); err != nil {
+			return sqlTx, err
+		}
+
+	}
+
+	for _, spend := range tx.Spends {
+		vmet := db.InsertVMetaOutParams{
+			BlockHash: blockHash,
+			Txid:      tx.TxID,
+		}
+
+		if spend.ScriptError != nil {
+			if spend.ScriptError.Name != "" {
+				if spend.ScriptError.Name[0] == '@' {
+					vmet.Name = pgtype.Text{
+						String: spend.ScriptError.Name[1:],
+						Valid:  true,
+					}
+				} else {
+					vmet.Name = pgtype.Text{
+						String: spend.ScriptError.Name,
+						Valid:  true,
 					}
 				}
-
-				if spend.ScriptError.Reason != "" {
-					vmet.ScriptError = pgtype.Text{String: spend.ScriptError.Reason, Valid: true}
-				}
-
-				//TODO handle script error types gracefully
-				if strings.ToUpper(spend.ScriptError.Type) == "REJECT" {
-					vmet.Action = db.NullCovenantAction{CovenantAction: db.CovenantActionREJECT, Valid: true}
-				} else {
-					vmet.Action = db.NullCovenantAction{CovenantAction: db.CovenantActionREJECT, Valid: true}
-					vmet.ScriptError = pgtype.Text{String: spend.ScriptError.Reason + string(spend.ScriptError.Type), Valid: true}
-				}
 			}
 
-			if err := q.InsertVMetaOut(context.Background(), vmet); err != nil {
-				return sqlTx, err
+			if spend.ScriptError.Reason != "" {
+				vmet.ScriptError = pgtype.Text{String: spend.ScriptError.Reason, Valid: true}
 			}
 
+			//TODO handle script error types gracefully
+			if strings.ToUpper(spend.ScriptError.Type) == "REJECT" {
+				vmet.Action = db.NullCovenantAction{CovenantAction: db.CovenantActionREJECT, Valid: true}
+			} else {
+				vmet.Action = db.NullCovenantAction{CovenantAction: db.CovenantActionREJECT, Valid: true}
+				vmet.ScriptError = pgtype.Text{String: spend.ScriptError.Reason + string(spend.ScriptError.Type), Valid: true}
+			}
 		}
+
+		if err := q.InsertVMetaOut(context.Background(), vmet); err != nil {
+			return sqlTx, err
+		}
+
 	}
 
 	return sqlTx, nil
@@ -249,7 +477,7 @@ func StoreBitcoinBlock(block *node.Block, tx pgx.Tx) (pgx.Tx, error) {
 	if wasInserted {
 		for tx_index, transaction := range block.Transactions {
 			ind := int32(tx_index)
-			if err := storeTransaction(q, &transaction, &blockParams.Hash, &ind); err != nil {
+			if err := StoreTransaction(q, &transaction, &blockParams.Hash, &ind); err != nil {
 				return tx, err
 			}
 		}
@@ -295,7 +523,7 @@ func updateTxSpenders(q *db.Queries, transaction *node.Transaction, blockHash By
 	return nil
 }
 
-func storeTransaction(q *db.Queries, transaction *node.Transaction, blockHash *Bytes, txIndex *int32) error {
+func StoreTransaction(q *db.Queries, transaction *node.Transaction, blockHash *Bytes, txIndex *int32) error {
 	transactionParams := db.InsertTransactionParams{}
 	copier.Copy(&transactionParams, &transaction)
 	transactionParams.BlockHash = *blockHash
