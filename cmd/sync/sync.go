@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
-	"github.com/jinzhu/copier"
 
 	"github.com/spacesprotocol/explorer-backend/pkg/db"
 	"github.com/spacesprotocol/explorer-backend/pkg/node"
@@ -200,10 +199,10 @@ func syncMempool(pg *pgx.Conn, bc *node.BitcoinClient, sc *node.SpacesClient) er
 		return err
 	}
 
-	tx := new(node.Transaction)
-	metaTx := new(node.MetaTransaction)
 	var deadbeef Bytes
 	deadbeef.UnmarshalString(deadbeefString)
+
+	var hexes []string
 
 	for tx_index, txid := range txIds {
 		ind := int32(tx_index)
@@ -212,30 +211,28 @@ func syncMempool(pg *pgx.Conn, bc *node.BitcoinClient, sc *node.SpacesClient) er
 		if err != nil {
 			return err
 		}
-		metaTransaction, err := sc.GetTxMeta(context.Background(), txid)
-		// if err != nil {
-		// 	return err
-		// }
+		hexes = append(hexes, transaction.Hex.String())
 
-		copier.Copy(&tx, &transaction)
-		err = store.StoreTransaction(q, tx, &deadbeef, &ind)
-		if err != nil {
-			return err
-		}
-
-		copier.Copy(&metaTx, metaTransaction)
-		sqlTx, err = store.StoreSpacesTransaction(*metaTx, deadbeef, sqlTx)
+		err = store.StoreTransaction(q, transaction, &deadbeef, &ind)
 		if err != nil {
 			return err
 		}
 	}
 
-	// for tx_index, transaction := range txs {
-	// 	ind := int32(tx_index)
-	// 	if err := store.StoreTransaction(q, &tx, &deadbeef, &ind); err != nil {
-	// 		return err
-	// 	}
-	// }
+	metaTxs, err := sc.CheckPackage(context.Background(), hexes)
+	if err != nil {
+		return err
+	}
+
+	for _, metaTx := range metaTxs {
+		if metaTx != nil {
+			log.Printf("%+v", metaTx)
+			sqlTx, err = store.StoreSpacesTransaction(*metaTx, deadbeef, sqlTx)
+			if err != nil {
+				return err
+			}
+		}
+	}
 
 	if err = sqlTx.Commit(context.Background()); err != nil {
 		return err

@@ -1,3 +1,4 @@
+-- +goose NO TRANSACTION
 -- +goose Up
 -- +goose StatementBegin
 CREATE INDEX CONCURRENTLY index_tx_outputs_spender

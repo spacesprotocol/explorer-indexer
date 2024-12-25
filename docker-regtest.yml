@@ -37,8 +37,8 @@ services:
       - bitcoind
       - -regtest=1
       - -server=1
-      - -rpcuser=bitcoin
-      - -rpcpassword=bitcoin
+      - -rpcuser=test
+      - -rpcpassword=test
       - -rpcallowip=0.0.0.0/0
       - -rpcbind=0.0.0.0
       - -txindex=1
@@ -54,7 +54,7 @@ services:
     volumes:
       - ./regtest-data/bitcoin:/root/.bitcoin
     healthcheck:
-      test: ["CMD", "bitcoin-cli", "-regtest", "-rpcuser=bitcoin", "-rpcpassword=bitcoin", "getblockchaininfo"]
+      test: ["CMD", "bitcoin-cli", "-regtest", "-rpcuser=test", "-rpcpassword=test", "getblockchaininfo"]
       interval: 30s
       timeout: 10s
       retries: 5
@@ -78,8 +78,8 @@ services:
     environment:
       POSTGRES_URI: "postgres://postgres:postgres@db:5432/postgres?sslmode=disable"
       BITCOIN_NODE_URI: http://bitcoin:18443
-      BITCOIN_NODE_USER: bitcoin
-      BITCOIN_NODE_PASSWORD: bitcoin
+      BITCOIN_NODE_USER: test
+      BITCOIN_NODE_PASSWORD: test
       SPACES_NODE_URI: http://spaced:7218
       UPDATE_DB_INTERVAL: 5
     depends_on:

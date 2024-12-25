@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
 
 	"strings"
 
@@ -71,14 +70,13 @@ type RpcResponse struct {
 }
 
 func (client *Client) Rpc(ctx context.Context, method string, params []interface{}, target interface{}) error {
-	log.SetFlags(log.LstdFlags | log.Lshortfile)
 	body := rpcBody{method, params, "2.0", 1337}
 	response := RpcResponse{}
 	if err := client.do(ctx, "POST", "", &body, &response); err != nil {
 		return err
 	}
 	if response.Error != nil {
-		return fmt.Errorf("spaces node: %v", response.Error.Message)
+		return fmt.Errorf("rpc client: %v", response.Error.Message)
 	}
 
 	return json.Unmarshal(response.Result, target)

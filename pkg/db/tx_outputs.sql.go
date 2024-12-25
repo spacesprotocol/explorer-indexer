@@ -155,3 +155,38 @@ func (q *Queries) SetSpender(ctx context.Context, arg SetSpenderParams) error {
 	)
 	return err
 }
+
+const setSpenderBatch = `-- name: SetSpenderBatch :exec
+UPDATE tx_outputs
+SET spender_block_hash = u.spender_block_hash,
+    spender_txid = u.spender_txid,
+    spender_index = u.spender_index
+FROM (
+    SELECT UNNEST($1::bytea[]) as txid,
+           UNNEST($2::bigint[]) as index,
+           UNNEST($3::bytea[]) as spender_txid,
+           UNNEST($4::bigint[]) as spender_index,
+           UNNEST($5::bytea[]) as spender_block_hash
+) as u
+WHERE tx_outputs.txid = u.txid
+AND tx_outputs.index = u.index
+`
+
+type SetSpenderBatchParams struct {
+	Column1 []types.Bytes
+	Column2 []int64
+	Column3 []types.Bytes
+	Column4 []int64
+	Column5 []types.Bytes
+}
+
+func (q *Queries) SetSpenderBatch(ctx context.Context, arg SetSpenderBatchParams) error {
+	_, err := q.db.Exec(ctx, setSpenderBatch,
+		arg.Column1,
+		arg.Column2,
+		arg.Column3,
+		arg.Column4,
+		arg.Column5,
+	)
+	return err
+}

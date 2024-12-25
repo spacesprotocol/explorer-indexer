@@ -47,3 +47,13 @@ func (client *SpacesClient) GetTxMeta(ctx context.Context, txId string) (*MetaTr
 	}
 	return metaTx, err
 }
+
+func (client *SpacesClient) CheckPackage(ctx context.Context, txHexes []string) ([]*MetaTransaction, error) {
+	metaTxs := make([]*MetaTransaction, 0)
+	err := client.Rpc(ctx, "checkpackage", []interface{}{txHexes}, &metaTxs)
+	if err != nil {
+		log.Print(err)
+		return nil, err
+	}
+	return metaTxs, err
+}

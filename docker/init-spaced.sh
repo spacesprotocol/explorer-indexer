@@ -1,14 +1,14 @@
 #!/bin/bash
 # init-spaced.sh
 
-spaced --block-index --chain=regtest --bitcoin-rpc-user=bitcoin --bitcoin-rpc-password=bitcoin --bitcoin-rpc-url=http://bitcoin:18443 --rpc-bind=0.0.0.0 &
+spaced --block-index --chain=regtest --bitcoin-rpc-user=test --bitcoin-rpc-password=test --bitcoin-rpc-url=http://bitcoin:18443 --rpc-bind=0.0.0.0 &
 SPACED_PID=$!
 
 # Wait for both Bitcoin and Spaced to be ready
 BLOCK_COUNT=$(PGPASSWORD=postgres psql -h db -U postgres -d postgres -t -c "SELECT COUNT(*) FROM blocks;" | tr -d ' ')
-echo "latest block in the db is of height $BLOCK_COUNT"
+echo "found $BLOCK_COUNT block(s)"
 
-if [ "$BLOCK_COUNT" -eq "0" ]; then
+if [ "$BLOCK_COUNT" -lt "3" ]; then
     echo "Empty database detected. Running initialization..."
     
     # Create and import wallet
@@ -22,13 +22,14 @@ EOL
 
     echo "Importing wallet..."
     space-cli --chain regtest importwallet /app/default.json
+    space-cli --chain regtest loadwallet
 
     # Get address and mine initial blocks
     ADDRESS=$(space-cli --chain regtest getnewaddress)
     echo "Mining initial blocks to address: $ADDRESS"
 
     # Mine 101 blocks to make coins spendable
-    curl -s -u bitcoin:bitcoin --data-binary "{\"jsonrpc\": \"1.0\", \"id\":\"mine\", \"method\": \"generatetoaddress\", \"params\": [101, \"$ADDRESS\"]}" -H 'content-type: text/plain;' http://bitcoin:18443/
+    curl -s -u test:test --data-binary "{\"jsonrpc\": \"1.0\", \"id\":\"mine\", \"method\": \"generatetoaddress\", \"params\": [101, \"$ADDRESS\"]}" -H 'content-type: text/plain;' http://bitcoin:18443/
 
     # Fixed array of space names
     SPACES=(
@@ -45,13 +46,13 @@ EOL
         echo "Opening space: $SPACE"
         space-cli --chain regtest open "$SPACE" --fee-rate=1
         
-        curl -s -u bitcoin:bitcoin --data-binary "{\"jsonrpc\": \"1.0\", \"id\":\"mine\", \"method\": \"generatetoaddress\", \"params\": [1, \"$ADDRESS\"]}" -H 'content-type: text/plain;' http://bitcoin:18443/
+        curl -s -u test:test --data-binary "{\"jsonrpc\": \"1.0\", \"id\":\"mine\", \"method\": \"generatetoaddress\", \"params\": [1, \"$ADDRESS\"]}" -H 'content-type: text/plain;' http://bitcoin:18443/
         sleep 0.1
     done
 
     # Mine 144 more blocks
     echo "Mining 144 additional blocks..."
-    curl -s -u bitcoin:bitcoin --data-binary "{\"jsonrpc\": \"1.0\", \"id\":\"mine\", \"method\": \"generatetoaddress\", \"params\": [144, \"$ADDRESS\"]}" -H 'content-type: text/plain;' http://bitcoin:18443/
+    curl -s -u test:test --data-binary "{\"jsonrpc\": \"1.0\", \"id\":\"mine\", \"method\": \"generatetoaddress\", \"params\": [144, \"$ADDRESS\"]}" -H 'content-type: text/plain;' http://bitcoin:18443/
 
     # Send bid transactions for first 10 spaces
     echo "Sending bid transactions for first 10 spaces..."
@@ -60,7 +61,7 @@ EOL
         echo "Bidding on space: $SPACE"
         space-cli --chain regtest bid "$SPACE" 2000 --fee-rate=1
         
-        curl -s -u bitcoin:bitcoin --data-binary "{\"jsonrpc\": \"1.0\", \"id\":\"mine\", \"method\": \"generatetoaddress\", \"params\": [1, \"$ADDRESS\"]}" -H 'content-type: text/plain;' http://bitcoin:18443/
+        curl -s -u test:test --data-binary "{\"jsonrpc\": \"1.0\", \"id\":\"mine\", \"method\": \"generatetoaddress\", \"params\": [1, \"$ADDRESS\"]}" -H 'content-type: text/plain;' http://bitcoin:18443/
         sleep 1
     done
 

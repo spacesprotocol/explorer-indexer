@@ -38,6 +38,7 @@ type Transaction struct {
 	Vin      []Vin   `json:"vin"`
 	Vout     []Vout  `json:"vout"`
 	FloatFee float64 `json:"fee,omitempty"`
+	Hex      Bytes   `json:"hex,omitempty"`
 }
 
 func (t *Transaction) UnmarshalJSON(data []byte) error {
