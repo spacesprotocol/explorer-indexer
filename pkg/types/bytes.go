@@ -22,6 +22,12 @@ func (b *Bytes) UnmarshalText(t []byte) error {
 	return err
 }
 
+func (b *Bytes) UnmarshalString(s string) error {
+	h, err := hex.DecodeString(s)
+	*b = Bytes(h)
+	return err
+}
+
 func (b Bytes) MarshalJSON() ([]byte, error) {
 	s := hex.EncodeToString([]byte(b))
 	return json.Marshal(s)

@@ -12,6 +12,16 @@ import (
 	"github.com/spacesprotocol/explorer-backend/pkg/types"
 )
 
+const deleteMempoolVmetaouts = `-- name: DeleteMempoolVmetaouts :exec
+DELETE FROM vmetaouts
+WHERE block_hash = '\xdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef'
+`
+
+func (q *Queries) DeleteMempoolVmetaouts(ctx context.Context) error {
+	_, err := q.db.Exec(ctx, deleteMempoolVmetaouts)
+	return err
+}
+
 const deleteRollouts = `-- name: DeleteRollouts :exec
 DELETE FROM rollouts
 `

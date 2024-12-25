@@ -22,6 +22,8 @@ import (
 var activationBlock = getActivationBlock()
 var fastSyncBlockHeight = getFastSyncBlockHeight()
 
+const deadbeefString = "deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef"
+
 func getActivationBlock() int32 {
 	if height := os.Getenv("ACTIVATION_BLOCK_HEIGHT"); height != "" {
 		if h, err := strconv.ParseInt(height, 10, 32); err == nil {
@@ -64,20 +66,25 @@ func main() {
 			log.Println(err)
 			time.Sleep(time.Second)
 		}
+
+		if err := syncMempool(pg, &bc, &sc); err != nil {
+			log.Println(err)
+		}
+
 		time.Sleep(time.Duration(updateInterval) * time.Second)
 	}
 
 }
 
 func syncRollouts(ctx context.Context, pg *pgx.Conn, sc *node.SpacesClient) error {
-	tx, err := pg.BeginTx(ctx, pgx.TxOptions{})
+	sqlTx, err := pg.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		return err
 	}
 
-	defer tx.Rollback(ctx)
+	defer sqlTx.Rollback(ctx)
 
-	q := db.New(tx)
+	q := db.New(sqlTx)
 	if err = q.DeleteRollouts(ctx); err != nil {
 		return err
 	}
@@ -102,7 +109,7 @@ func syncRollouts(ctx context.Context, pg *pgx.Conn, sc *node.SpacesClient) erro
 			}
 		}
 	}
-	if err = tx.Commit(ctx); err != nil {
+	if err = sqlTx.Commit(ctx); err != nil {
 		return err
 	}
 	return nil
@@ -161,4 +168,72 @@ func syncBlocks(pg *pgx.Conn, bc *node.BitcoinClient, sc *node.SpacesClient) err
 		nextBlockHash = block.NextBlockHash
 	}
 	return nil
+}
+
+func syncMempool(pg *pgx.Conn, bc *node.BitcoinClient, sc *node.SpacesClient) error {
+
+	txIds, err := bc.GetMempoolTxIds(context.Background())
+	if err != nil {
+		return err
+	}
+	sqlTx, err := pg.BeginTx(context.Background(), pgx.TxOptions{})
+	if err != nil {
+		return err
+	}
+	defer sqlTx.Rollback(context.Background())
+	q := db.New(sqlTx)
+
+	if err = q.DeleteMempoolVmetaouts(context.Background()); err != nil {
+		return err
+	}
+
+	if err = q.DeleteMempoolTxOutputs(context.Background()); err != nil {
+		return err
+	}
+
+	if err = q.DeleteMempoolTxInputs(context.Background()); err != nil {
+		return err
+	}
+
+	if err = q.DeleteMempoolTransactions(context.Background()); err != nil {
+		return err
+	}
+
+	var deadbeef Bytes
+	deadbeef.UnmarshalString(deadbeefString)
+
+	var hexes []string
+
+	for tx_index, txid := range txIds {
+		ind := int32(tx_index)
+		transaction, err := bc.GetTransaction(context.Background(), txid)
+		if err != nil {
+			return err
+		}
+		hexes = append(hexes, transaction.Hex.String())
+
+		err = store.StoreTransaction(q, transaction, &deadbeef, &ind)
+		if err != nil {
+			return err
+		}
+	}
+
+	metaTxs, err := sc.CheckPackage(context.Background(), hexes)
+	if err != nil {
+		return err
+	}
+
+	for _, metaTx := range metaTxs {
+		if metaTx != nil {
+			sqlTx, err = store.StoreSpacesTransaction(*metaTx, deadbeef, sqlTx)
+			if err != nil {
+				return err
+			}
+		}
+	}
+
+	if err = sqlTx.Commit(context.Background()); err != nil {
+		return err
+	}
+	return err
 }

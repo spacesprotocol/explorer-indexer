@@ -7,13 +7,13 @@ RUN apt-get update && \
 
 WORKDIR /app
 
-RUN wget https://github.com/spacesprotocol/spaces/releases/download/v0.0.5-rc1/spaces-v0.0.5-rc1-linux-x86_64.tar.gz && \
-    tar xzf spaces-v0.0.5-rc1-linux-x86_64.tar.gz && \
-    mv spaces-v0.0.5-rc1-linux-x86_64/spaced /usr/local/bin/ && \
-    mv spaces-v0.0.5-rc1-linux-x86_64/space-cli /usr/local/bin/ && \
+RUN wget https://github.com/spacesprotocol/spaces/releases/download/v0.0.5/spaces-v0.0.5-linux-x86_64.tar.gz && \
+    tar xzf spaces-v0.0.5-linux-x86_64.tar.gz && \
+    mv spaces-v0.0.5-linux-x86_64/spaced /usr/local/bin/ && \
+    mv spaces-v0.0.5-linux-x86_64/space-cli /usr/local/bin/ && \
     chmod +x /usr/local/bin/spaced && \
     chmod +x /usr/local/bin/space-cli && \
-    rm -rf spaces-v0.0.5-rc1-linux-x86_64*
+    rm -rf spaces-v0.0.5-linux-x86_64*
 
 COPY docker/init-spaced.sh /app/init-spaced.sh
 RUN chmod +x /app/init-spaced.sh

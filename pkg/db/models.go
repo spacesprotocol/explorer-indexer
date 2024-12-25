@@ -117,6 +117,14 @@ type TxOutput struct {
 	SpenderBlockHash *types.Bytes
 }
 
+type TxOutputSpenderUpdate struct {
+	Txid             *types.Bytes
+	Index            pgtype.Int8
+	SpenderTxid      *types.Bytes
+	SpenderIndex     pgtype.Int8
+	SpenderBlockHash *types.Bytes
+}
+
 type Vmetaout struct {
 	BlockHash     types.Bytes
 	Txid          types.Bytes

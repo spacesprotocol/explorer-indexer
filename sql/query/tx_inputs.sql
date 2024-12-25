@@ -19,3 +19,12 @@ SELECT *
 FROM tx_inputs
 WHERE txid = $1 AND block_hash = $2
 ORDER BY index;
+
+-- name: DeleteMempoolTxInputs :exec
+UPDATE tx_outputs
+SET spender_txid = NULL,
+    spender_index = NULL,
+    spender_block_hash = NULL
+WHERE spender_block_hash = '\xdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef';
+DELETE FROM tx_inputs
+WHERE block_hash = '\xdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef';

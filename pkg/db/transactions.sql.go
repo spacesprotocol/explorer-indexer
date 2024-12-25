@@ -12,20 +12,20 @@ import (
 	"github.com/spacesprotocol/explorer-backend/pkg/types"
 )
 
-const deleteMempool = `-- name: DeleteMempool :exec
+const deleteMempoolTransactions = `-- name: DeleteMempoolTransactions :exec
 DELETE FROM transactions
-WHERE block_hash IS NULL
+WHERE block_hash = '\xdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef'
 `
 
-func (q *Queries) DeleteMempool(ctx context.Context) error {
-	_, err := q.db.Exec(ctx, deleteMempool)
+func (q *Queries) DeleteMempoolTransactions(ctx context.Context) error {
+	_, err := q.db.Exec(ctx, deleteMempoolTransactions)
 	return err
 }
 
 const getMempoolTransactions = `-- name: GetMempoolTransactions :many
 SELECT txid, tx_hash, version, size, vsize, weight, locktime, fee, block_hash, index
 FROM transactions
-WHERE block_hash IS NULL
+WHERE block_hash = '\xdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef'
 ORDER BY index
 LIMIT $1 OFFSET $2
 `

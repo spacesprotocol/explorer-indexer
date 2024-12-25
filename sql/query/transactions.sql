@@ -24,11 +24,10 @@ LIMIT $2 OFFSET $3;
 -- name: GetMempoolTransactions :many
 SELECT *
 FROM transactions
-WHERE block_hash IS NULL
+WHERE block_hash = '\xdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef'
 ORDER BY index
 LIMIT $1 OFFSET $2;
 
--- name: DeleteMempool :exec
+-- name: DeleteMempoolTransactions :exec
 DELETE FROM transactions
-WHERE block_hash IS NULL;
-
+WHERE block_hash = '\xdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef';

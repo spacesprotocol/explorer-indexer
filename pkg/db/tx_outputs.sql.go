@@ -12,6 +12,16 @@ import (
 	"github.com/spacesprotocol/explorer-backend/pkg/types"
 )
 
+const deleteMempoolTxOutputs = `-- name: DeleteMempoolTxOutputs :exec
+DELETE FROM tx_outputs
+WHERE block_hash = '\xdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef'
+`
+
+func (q *Queries) DeleteMempoolTxOutputs(ctx context.Context) error {
+	_, err := q.db.Exec(ctx, deleteMempoolTxOutputs)
+	return err
+}
+
 const getTxOutputsByBlockAndTxid = `-- name: GetTxOutputsByBlockAndTxid :many
 SELECT block_hash, txid, index, value, scriptpubkey, spender_txid, spender_index, spender_block_hash
 FROM tx_outputs
@@ -142,6 +152,41 @@ func (q *Queries) SetSpender(ctx context.Context, arg SetSpenderParams) error {
 		arg.SpenderTxid,
 		arg.SpenderIndex,
 		arg.SpenderBlockHash,
+	)
+	return err
+}
+
+const setSpenderBatch = `-- name: SetSpenderBatch :exec
+UPDATE tx_outputs
+SET spender_block_hash = u.spender_block_hash,
+    spender_txid = u.spender_txid,
+    spender_index = u.spender_index
+FROM (
+    SELECT UNNEST($1::bytea[]) as txid,
+           UNNEST($2::bigint[]) as index,
+           UNNEST($3::bytea[]) as spender_txid,
+           UNNEST($4::bigint[]) as spender_index,
+           UNNEST($5::bytea[]) as spender_block_hash
+) as u
+WHERE tx_outputs.txid = u.txid
+AND tx_outputs.index = u.index
+`
+
+type SetSpenderBatchParams struct {
+	Column1 []types.Bytes
+	Column2 []int64
+	Column3 []types.Bytes
+	Column4 []int64
+	Column5 []types.Bytes
+}
+
+func (q *Queries) SetSpenderBatch(ctx context.Context, arg SetSpenderBatchParams) error {
+	_, err := q.db.Exec(ctx, setSpenderBatch,
+		arg.Column1,
+		arg.Column2,
+		arg.Column3,
+		arg.Column4,
+		arg.Column5,
 	)
 	return err
 }
