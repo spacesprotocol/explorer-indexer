@@ -225,7 +225,6 @@ func syncMempool(pg *pgx.Conn, bc *node.BitcoinClient, sc *node.SpacesClient) er
 
 	for _, metaTx := range metaTxs {
 		if metaTx != nil {
-			log.Printf("%+v", metaTx)
 			sqlTx, err = store.StoreSpacesTransaction(*metaTx, deadbeef, sqlTx)
 			if err != nil {
 				return err
