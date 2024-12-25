@@ -206,7 +206,6 @@ func syncMempool(pg *pgx.Conn, bc *node.BitcoinClient, sc *node.SpacesClient) er
 
 	for tx_index, txid := range txIds {
 		ind := int32(tx_index)
-		log.Printf("storing mempool tx %s and index %d", txid, ind)
 		transaction, err := bc.GetTransaction(context.Background(), txid)
 		if err != nil {
 			return err
