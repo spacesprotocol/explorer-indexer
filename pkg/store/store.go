@@ -256,7 +256,7 @@ func StoreBitcoinBlock(block *node.Block, tx pgx.Tx) (pgx.Tx, error) {
 	}
 	if wasInserted {
 		for tx_index, transaction := range block.Transactions {
-			ind := int32(tx_index)
+			ind := int64(tx_index)
 			if err := StoreTransaction(q, &transaction, &blockParams.Hash, &ind); err != nil {
 				return tx, err
 			}
@@ -304,16 +304,16 @@ func updateTxSpenders(q *db.Queries, transaction *node.Transaction, blockHash By
 	return nil
 }
 
-func StoreTransaction(q *db.Queries, transaction *node.Transaction, blockHash *Bytes, txIndex *int32) error {
+func StoreTransaction(q *db.Queries, transaction *node.Transaction, blockHash *Bytes, txIndex *int64) error {
 	transactionParams := db.InsertTransactionParams{}
 	copier.Copy(&transactionParams, &transaction)
 	transactionParams.BlockHash = *blockHash
-	var nullableIndex pgtype.Int4
+	var nullableIndex pgtype.Int8
 	if txIndex == nil {
 		nullableIndex.Valid = false
 	} else {
 		nullableIndex.Valid = true
-		nullableIndex.Int32 = *txIndex
+		nullableIndex.Int64 = *txIndex
 	}
 	transactionParams.Index = nullableIndex
 

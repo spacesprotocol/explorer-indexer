@@ -91,7 +91,7 @@ type Transaction struct {
 	Locktime  int32
 	Fee       int64
 	BlockHash types.Bytes
-	Index     pgtype.Int4
+	Index     pgtype.Int8
 }
 
 type TxInput struct {
@@ -112,14 +112,6 @@ type TxOutput struct {
 	Index            int64
 	Value            int64
 	Scriptpubkey     types.Bytes
-	SpenderTxid      *types.Bytes
-	SpenderIndex     pgtype.Int8
-	SpenderBlockHash *types.Bytes
-}
-
-type TxOutputSpenderUpdate struct {
-	Txid             *types.Bytes
-	Index            pgtype.Int8
 	SpenderTxid      *types.Bytes
 	SpenderIndex     pgtype.Int8
 	SpenderBlockHash *types.Bytes

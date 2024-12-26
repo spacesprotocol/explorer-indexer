@@ -22,6 +22,17 @@ func (q *Queries) DeleteMempoolVmetaouts(ctx context.Context) error {
 	return err
 }
 
+const deleteMempoolVmetaoutsByTxid = `-- name: DeleteMempoolVmetaoutsByTxid :exec
+DELETE FROM vmetaouts
+WHERE txid = $1
+AND block_hash = '\xdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef'
+`
+
+func (q *Queries) DeleteMempoolVmetaoutsByTxid(ctx context.Context, txid types.Bytes) error {
+	_, err := q.db.Exec(ctx, deleteMempoolVmetaoutsByTxid, txid)
+	return err
+}
+
 const deleteRollouts = `-- name: DeleteRollouts :exec
 DELETE FROM rollouts
 `

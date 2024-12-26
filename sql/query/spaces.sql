@@ -34,3 +34,9 @@ DELETE FROM rollouts;
 -- name: DeleteMempoolVmetaouts :exec
 DELETE FROM vmetaouts
 WHERE block_hash = '\xdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef';
+
+
+-- name: DeleteMempoolVmetaoutsByTxid :exec
+DELETE FROM vmetaouts
+WHERE txid = $1
+AND block_hash = '\xdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef';

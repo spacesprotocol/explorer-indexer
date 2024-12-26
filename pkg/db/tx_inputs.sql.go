@@ -24,6 +24,19 @@ func (q *Queries) DeleteMempoolTxInputs(ctx context.Context) error {
 	return err
 }
 
+const deleteMempoolTxInputsByTxid = `-- name: DeleteMempoolTxInputsByTxid :exec
+UPDATE tx_outputs
+SET spender_txid = NULL,
+    spender_index = NULL,
+    spender_block_hash = NULL
+WHERE spender_block_hash = '\xdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef' and txid = $1
+`
+
+func (q *Queries) DeleteMempoolTxInputsByTxid(ctx context.Context, txid types.Bytes) error {
+	_, err := q.db.Exec(ctx, deleteMempoolTxInputsByTxid, txid)
+	return err
+}
+
 const getTxInputsByBlockAndTxid = `-- name: GetTxInputsByBlockAndTxid :many
 SELECT block_hash, txid, index, hash_prevout, index_prevout, sequence, coinbase, txinwitness, scriptsig
 FROM tx_inputs

@@ -23,6 +23,7 @@ var activationBlock = getActivationBlock()
 var fastSyncBlockHeight = getFastSyncBlockHeight()
 
 const deadbeefString = "deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef"
+const chunkSize = 500
 
 func getActivationBlock() int32 {
 	if height := os.Getenv("ACTIVATION_BLOCK_HEIGHT"); height != "" {
@@ -169,85 +170,148 @@ func syncBlocks(pg *pgx.Conn, bc *node.BitcoinClient, sc *node.SpacesClient) err
 	}
 	return nil
 }
+
 func syncMempool(pg *pgx.Conn, bc *node.BitcoinClient, sc *node.SpacesClient) error {
-	txIds, err := bc.GetMempoolTxIds(context.Background())
+	// Get current mempool state
+	currentTxIds, err := bc.GetMempoolTxIds(context.Background())
 	if err != nil {
 		return err
 	}
-	// Clear existing mempool data
-	if err := clearMempoolTables(pg); err != nil {
-		return err
-	}
-	var deadbeef Bytes
-	deadbeef.UnmarshalString(deadbeefString)
-	// Process transactions in chunks
-	const chunkSize = 1000
-	log.Printf("found %d txs", len(txIds))
-	for i := 0; i < len(txIds); i += chunkSize {
-		log.Printf("processing chunk #%d of thousand mempool txs", i+1)
-		end := i + chunkSize
-		if end > len(txIds) {
-			end = len(txIds)
-		}
-		if err := processTransactionChunk(pg, bc, sc, txIds[i:end], &deadbeef, i); err != nil {
-			return err
-		}
-	}
-	return nil
-}
+	log.Printf("found %d txs in current mempool", len(currentTxIds))
 
-func clearMempoolTables(pg *pgx.Conn) error {
-	sqlTx, err := pg.BeginTx(context.Background(), pgx.TxOptions{})
+	// Get existing mempool transactions
+	q := db.New(pg)
+	existingTxidsBytes, err := q.GetMempoolTxids(context.Background())
 	if err != nil {
 		return err
 	}
-	defer sqlTx.Rollback(context.Background())
-	q := db.New(sqlTx)
-	tables := []func(context.Context) error{
-		q.DeleteMempoolVmetaouts,
-		q.DeleteMempoolTxOutputs,
-		q.DeleteMempoolTxInputs,
-		q.DeleteMempoolTransactions,
+
+	existingTxs := make(map[string]struct{})
+	for _, txid := range existingTxidsBytes {
+		existingTxs[txid.String()] = struct{}{}
 	}
-	for _, deleteFunc := range tables {
-		if err := deleteFunc(context.Background()); err != nil {
-			return err
+
+	log.Printf("found %d txs in database mempool", len(existingTxs))
+
+	// Find transactions to delete and add
+	var toDelete []Bytes
+	for _, txidBytes := range existingTxidsBytes {
+		txidStr := txidBytes.String()
+		found := false
+		for _, currentTxid := range currentTxIds {
+			if txidStr == currentTxid {
+				found = true
+				break
+			}
+		}
+		if !found {
+			toDelete = append(toDelete, txidBytes)
 		}
 	}
-	return sqlTx.Commit(context.Background())
-}
 
-func processTransactionChunk(pg *pgx.Conn, bc *node.BitcoinClient, sc *node.SpacesClient, txIds []string, deadbeef *Bytes, baseIndex int) error {
-	sqlTx, err := pg.BeginTx(context.Background(), pgx.TxOptions{})
-	if err != nil {
-		return err
+	var toAdd []string
+	for _, txid := range currentTxIds {
+		if _, exists := existingTxs[txid]; !exists {
+			toAdd = append(toAdd, txid)
+		}
 	}
-	defer sqlTx.Rollback(context.Background())
-	q := db.New(sqlTx)
-	var hexes []string
-	// Fetch and store Bitcoin transactions
-	for tx_index, txid := range txIds {
-		ind := int32(baseIndex + tx_index)
-		transaction, err := bc.GetTransaction(context.Background(), txid)
+
+	// Delete old transactions
+	if len(toDelete) > 0 {
+		log.Printf("deleting %d old transactions", len(toDelete))
+		sqlTx, err := pg.BeginTx(context.Background(), pgx.TxOptions{})
 		if err != nil {
-			continue
-		}
-		hexes = append(hexes, transaction.Hex.String())
-		if err := store.StoreTransaction(q, transaction, deadbeef, &ind); err != nil {
 			return err
 		}
-	}
-	// Process spaces transactions
-	metaTxs, err := sc.CheckPackage(context.Background(), hexes)
-	if err != nil {
-		return err
-	}
-	for _, metaTx := range metaTxs {
-		if metaTx != nil {
-			if sqlTx, err = store.StoreSpacesTransaction(*metaTx, *deadbeef, sqlTx); err != nil {
+		defer sqlTx.Rollback(context.Background())
+
+		qtx := db.New(sqlTx)
+		for _, txid := range toDelete {
+			if err := qtx.DeleteMempoolTxInputsByTxid(context.Background(), txid); err != nil {
+				return err
+			}
+
+			if err := qtx.DeleteMempoolTxOutputsByTxid(context.Background(), txid); err != nil {
+				return err
+			}
+
+			if err := qtx.DeleteMempoolTransactionByTxid(context.Background(), txid); err != nil {
 				return err
 			}
 		}
+
+		if err := sqlTx.Commit(context.Background()); err != nil {
+			return err
+		}
 	}
-	return sqlTx.Commit(context.Background())
+
+	if len(toAdd) == 0 {
+		log.Printf("no new transactions to add")
+		return nil
+	}
+
+	var deadbeef Bytes
+	deadbeef.UnmarshalString(deadbeefString)
+
+	// Process new transactions in chunks
+	log.Printf("processing %d new transactions", len(toAdd))
+
+	sqlTx, err := pg.BeginTx(context.Background(), pgx.TxOptions{})
+	if err != nil {
+		return err
+	}
+	defer sqlTx.Rollback(context.Background())
+
+	q = db.New(sqlTx)
+	for i := 0; i < len(toAdd); i += chunkSize {
+		end := i + chunkSize
+		if end > len(toAdd) {
+			end = len(toAdd)
+		}
+		log.Printf("processing chunk #%d of new mempool txs", i/chunkSize+1)
+
+		var hexes []string
+		chunk := toAdd[i:end]
+		for _, txid := range chunk {
+			indexBytes := txid[:15]
+			ind64, err := strconv.ParseInt(indexBytes, 16, 64)
+			if err != nil {
+				return err
+			}
+			ind := -(ind64 & 0x3fffffffffffffff)
+
+			transaction, err := bc.GetTransaction(context.Background(), txid)
+			if err != nil {
+				continue
+			}
+
+			hexes = append(hexes, transaction.Hex.String())
+
+			if err := store.StoreTransaction(q, transaction, &deadbeef, &ind); err != nil {
+				return err
+			}
+		}
+
+		// Process spaces transactions for this chunk
+		if len(hexes) > 0 {
+			metaTxs, err := sc.CheckPackage(context.Background(), hexes)
+			if err != nil {
+				return err
+			}
+
+			for _, metaTx := range metaTxs {
+				if metaTx != nil {
+					if sqlTx, err = store.StoreSpacesTransaction(*metaTx, deadbeef, sqlTx); err != nil {
+						return err
+					}
+				}
+			}
+		}
+	}
+
+	if err := sqlTx.Commit(context.Background()); err != nil {
+		return err
+	}
+
+	return nil
 }

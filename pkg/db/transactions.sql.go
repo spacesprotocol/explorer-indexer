@@ -12,6 +12,17 @@ import (
 	"github.com/spacesprotocol/explorer-backend/pkg/types"
 )
 
+const deleteMempoolTransactionByTxid = `-- name: DeleteMempoolTransactionByTxid :exec
+DELETE FROM transactions
+where txid = $1
+AND block_hash = '\xdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef'
+`
+
+func (q *Queries) DeleteMempoolTransactionByTxid(ctx context.Context, txid types.Bytes) error {
+	_, err := q.db.Exec(ctx, deleteMempoolTransactionByTxid, txid)
+	return err
+}
+
 const deleteMempoolTransactions = `-- name: DeleteMempoolTransactions :exec
 DELETE FROM transactions
 WHERE block_hash = '\xdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef'
@@ -66,6 +77,33 @@ func (q *Queries) GetMempoolTransactions(ctx context.Context, arg GetMempoolTran
 	return items, nil
 }
 
+const getMempoolTxids = `-- name: GetMempoolTxids :many
+SELECT txid
+FROM transactions
+WHERE block_hash = '\xdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef'
+ORDER BY index
+`
+
+func (q *Queries) GetMempoolTxids(ctx context.Context) ([]types.Bytes, error) {
+	rows, err := q.db.Query(ctx, getMempoolTxids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []types.Bytes{}
+	for rows.Next() {
+		var txid types.Bytes
+		if err := rows.Scan(&txid); err != nil {
+			return nil, err
+		}
+		items = append(items, txid)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getTransactionByTxid = `-- name: GetTransactionByTxid :one
 SELECT
   transactions.txid, transactions.tx_hash, transactions.version, transactions.size, transactions.vsize, transactions.weight, transactions.locktime, transactions.fee, transactions.block_hash, transactions.index,
@@ -85,7 +123,7 @@ type GetTransactionByTxidRow struct {
 	Locktime           int32
 	Fee                int64
 	BlockHash          types.Bytes
-	Index              pgtype.Int4
+	Index              pgtype.Int8
 	BlockHeightNotNull int32
 }
 
@@ -136,7 +174,7 @@ type GetTransactionsByBlockHeightRow struct {
 	Locktime           int32
 	Fee                int64
 	BlockHash          types.Bytes
-	Index              pgtype.Int4
+	Index              pgtype.Int8
 	BlockHeightNotNull int32
 }
 
@@ -187,7 +225,7 @@ type InsertTransactionParams struct {
 	Locktime  int32
 	Fee       int64
 	BlockHash types.Bytes
-	Index     pgtype.Int4
+	Index     pgtype.Int8
 }
 
 func (q *Queries) InsertTransaction(ctx context.Context, arg InsertTransactionParams) error {

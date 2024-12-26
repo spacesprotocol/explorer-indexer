@@ -29,6 +29,12 @@ DELETE FROM tx_outputs
 WHERE block_hash = '\xdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef';
 
 
+-- name: DeleteMempoolTxOutputsByTxid :exec
+DELETE FROM tx_outputs
+WHERE txid = $1
+AND block_hash = '\xdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef';
+
+
 -- name: SetSpenderBatch :exec
 UPDATE tx_outputs
 SET spender_block_hash = u.spender_block_hash,

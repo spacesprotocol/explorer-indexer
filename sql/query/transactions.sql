@@ -21,6 +21,13 @@ WHERE blocks.height = $1
 ORDER BY transactions.index
 LIMIT $2 OFFSET $3;
 
+
+-- name: GetMempoolTxids :many
+SELECT txid
+FROM transactions
+WHERE block_hash = '\xdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef'
+ORDER BY index;
+
 -- name: GetMempoolTransactions :many
 SELECT *
 FROM transactions
@@ -31,3 +38,8 @@ LIMIT $1 OFFSET $2;
 -- name: DeleteMempoolTransactions :exec
 DELETE FROM transactions
 WHERE block_hash = '\xdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef';
+
+-- name: DeleteMempoolTransactionByTxid :exec
+DELETE FROM transactions
+where txid = $1
+AND block_hash = '\xdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef';
