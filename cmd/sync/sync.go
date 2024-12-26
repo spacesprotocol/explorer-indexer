@@ -169,21 +169,17 @@ func syncBlocks(pg *pgx.Conn, bc *node.BitcoinClient, sc *node.SpacesClient) err
 	}
 	return nil
 }
-
 func syncMempool(pg *pgx.Conn, bc *node.BitcoinClient, sc *node.SpacesClient) error {
 	txIds, err := bc.GetMempoolTxIds(context.Background())
 	if err != nil {
 		return err
 	}
-
 	// Clear existing mempool data
 	if err := clearMempoolTables(pg); err != nil {
 		return err
 	}
-
 	var deadbeef Bytes
 	deadbeef.UnmarshalString(deadbeefString)
-
 	// Process transactions in chunks
 	const chunkSize = 1000
 	log.Printf("found %d txs", len(txIds))
@@ -193,12 +189,10 @@ func syncMempool(pg *pgx.Conn, bc *node.BitcoinClient, sc *node.SpacesClient) er
 		if end > len(txIds) {
 			end = len(txIds)
 		}
-
-		if err := processTransactionChunk(pg, bc, sc, txIds[i:end], &deadbeef); err != nil {
+		if err := processTransactionChunk(pg, bc, sc, txIds[i:end], &deadbeef, i); err != nil {
 			return err
 		}
 	}
-
 	return nil
 }
 
@@ -208,55 +202,46 @@ func clearMempoolTables(pg *pgx.Conn) error {
 		return err
 	}
 	defer sqlTx.Rollback(context.Background())
-
 	q := db.New(sqlTx)
-
 	tables := []func(context.Context) error{
 		q.DeleteMempoolVmetaouts,
 		q.DeleteMempoolTxOutputs,
 		q.DeleteMempoolTxInputs,
 		q.DeleteMempoolTransactions,
 	}
-
 	for _, deleteFunc := range tables {
 		if err := deleteFunc(context.Background()); err != nil {
 			return err
 		}
 	}
-
 	return sqlTx.Commit(context.Background())
 }
 
-func processTransactionChunk(pg *pgx.Conn, bc *node.BitcoinClient, sc *node.SpacesClient, txIds []string, deadbeef *Bytes) error {
+func processTransactionChunk(pg *pgx.Conn, bc *node.BitcoinClient, sc *node.SpacesClient, txIds []string, deadbeef *Bytes, baseIndex int) error {
 	sqlTx, err := pg.BeginTx(context.Background(), pgx.TxOptions{})
 	if err != nil {
 		return err
 	}
 	defer sqlTx.Rollback(context.Background())
-
 	q := db.New(sqlTx)
 	var hexes []string
-
 	// Fetch and store Bitcoin transactions
 	for tx_index, txid := range txIds {
-		ind := int32(tx_index)
+		ind := int32(baseIndex + tx_index)
 		transaction, err := bc.GetTransaction(context.Background(), txid)
 		if err != nil {
 			continue
 		}
 		hexes = append(hexes, transaction.Hex.String())
-
 		if err := store.StoreTransaction(q, transaction, deadbeef, &ind); err != nil {
 			return err
 		}
 	}
-
 	// Process spaces transactions
 	metaTxs, err := sc.CheckPackage(context.Background(), hexes)
 	if err != nil {
 		return err
 	}
-
 	for _, metaTx := range metaTxs {
 		if metaTx != nil {
 			if sqlTx, err = store.StoreSpacesTransaction(*metaTx, *deadbeef, sqlTx); err != nil {
@@ -264,75 +249,5 @@ func processTransactionChunk(pg *pgx.Conn, bc *node.BitcoinClient, sc *node.Spac
 			}
 		}
 	}
-
 	return sqlTx.Commit(context.Background())
 }
-
-// func syncMempool(pg *pgx.Conn, bc *node.BitcoinClient, sc *node.SpacesClient) error {
-//
-// 	txIds, err := bc.GetMempoolTxIds(context.Background())
-// 	if err != nil {
-// 		return err
-// 	}
-// 	sqlTx, err := pg.BeginTx(context.Background(), pgx.TxOptions{})
-// 	if err != nil {
-// 		return err
-// 	}
-// 	defer sqlTx.Rollback(context.Background())
-// 	q := db.New(sqlTx)
-//
-// 	if err = q.DeleteMempoolVmetaouts(context.Background()); err != nil {
-// 		return err
-// 	}
-//
-// 	if err = q.DeleteMempoolTxOutputs(context.Background()); err != nil {
-// 		return err
-// 	}
-//
-// 	if err = q.DeleteMempoolTxInputs(context.Background()); err != nil {
-// 		return err
-// 	}
-//
-// 	if err = q.DeleteMempoolTransactions(context.Background()); err != nil {
-// 		return err
-// 	}
-//
-// 	var deadbeef Bytes
-// 	deadbeef.UnmarshalString(deadbeefString)
-//
-// 	var hexes []string
-//
-// 	for tx_index, txid := range txIds {
-// 		ind := int32(tx_index)
-// 		transaction, err := bc.GetTransaction(context.Background(), txid)
-// 		if err != nil {
-// 			return err
-// 		}
-// 		hexes = append(hexes, transaction.Hex.String())
-//
-// 		err = store.StoreTransaction(q, transaction, &deadbeef, &ind)
-// 		if err != nil {
-// 			return err
-// 		}
-// 	}
-//
-//
-// 	metaTxs, err := sc.CheckPackage(context.Background(), hexes)
-// 	if err != nil {
-// 		return err
-// 	}
-//
-// 	for _, metaTx := range metaTxs {
-// 		if metaTx != nil {
-// 			sqlTx, err = store.StoreSpacesTransaction(*metaTx, deadbeef, sqlTx)
-// 			if err != nil {
-// 				return err
-// 			}
-// 		}
-// 	}
-//
-// 	if err = sqlTx.Commit(context.Background()); err != nil {
-// 		return err
-// 	}
-// 	return err
-// }
