@@ -11,7 +11,7 @@ BEGIN
     END IF;
 END $$;
 
-DROP INDEX transactions_block_hash_index;
+DROP INDEX if exists transactions_block_hash_index;
 ALTER TABLE transactions DROP COLUMN index;
 ALTER TABLE transactions RENAME COLUMN index_new TO index;
 ALTER TABLE transactions ALTER COLUMN index SET NOT NULL;
