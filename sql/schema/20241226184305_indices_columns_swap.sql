@@ -15,8 +15,8 @@ DROP INDEX if exists transactions_block_hash_index;
 ALTER TABLE transactions DROP COLUMN index;
 ALTER TABLE transactions RENAME COLUMN index_new TO index;
 ALTER TABLE transactions ALTER COLUMN index SET NOT NULL;
-DROP FUNCTION migrate_index_to_bigint_batch(tid);
-DROP TABLE migration_progress;
+DROP FUNCTION if exists migrate_index_to_bigint_batch(tid);
+DROP TABLE if exists migration_progress;
 -- +goose StatementEnd
 
 -- +goose Down

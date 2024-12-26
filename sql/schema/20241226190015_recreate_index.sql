@@ -8,3 +8,4 @@ CREATE UNIQUE INDEX CONCURRENTLY transactions_block_hash_index ON transactions (
 -- +goose StatementBegin
 DROP INDEX CONCURRENTLY IF EXISTS transactions_block_hash_index;
 -- +goose StatementEnd
+

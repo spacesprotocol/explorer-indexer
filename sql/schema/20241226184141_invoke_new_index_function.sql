@@ -3,43 +3,63 @@
 -- +goose StatementBegin
 DO $$
 DECLARE
-    last_ctid tid := '(0,0)'::tid;
-    batch_result RECORD;
+    batch_result INT;
     total_processed BIGINT := 0;
     total_rows BIGINT;
+    attempts INT := 0;
 BEGIN
     SELECT count(*) INTO total_rows FROM transactions;
     
     -- Begin tracking
-    INSERT INTO migration_progress (total_processed, last_ctid, total_rows) 
-    VALUES (0, '(0,0)', total_rows);
+    INSERT INTO migration_progress (processed_rows, total_rows) 
+    VALUES (0, total_rows);
     COMMIT;
 
     LOOP
-        BEGIN  -- Start new transaction for each batch
-            SELECT * INTO batch_result 
-            FROM migrate_index_to_bigint_batch(last_ctid);
+        BEGIN
+            SELECT migrate_index_to_bigint_batch() INTO batch_result;
             
-            EXIT WHEN batch_result.rows_updated = 0;
+            IF batch_result = 0 THEN
+                attempts := attempts + 1;
+                IF attempts >= 3 THEN  -- Try a few times before giving up
+                    -- Double check if we're really done
+                    IF EXISTS (
+                        SELECT 1 
+                        FROM transactions 
+                        WHERE index_new IS NULL
+                    ) THEN
+                        RAISE EXCEPTION 'Found unprocessed rows while attempting to exit';
+                    END IF;
+                    EXIT;
+                END IF;
+                -- Small sleep before retry
+                PERFORM pg_sleep(1);
+                CONTINUE;
+            END IF;
             
-            total_processed := total_processed + batch_result.rows_updated;
-            last_ctid := batch_result.new_last_ctid;
+            -- Reset attempts counter on successful update
+            attempts := 0;
+            
+            total_processed := total_processed + batch_result;
             
             -- Log progress
-            INSERT INTO migration_progress (total_processed, last_ctid, total_rows)
-            VALUES (total_processed, last_ctid, total_rows);
+            INSERT INTO migration_progress (processed_rows, total_rows)
+            VALUES (total_processed, total_rows);
             
-            RAISE NOTICE 'Processed % of % rows (%.2f%%), last ctid: %', 
-                total_processed, 
-                total_rows,
-                (total_processed::float * 100 / total_rows),
-                last_ctid;
-                
             COMMIT;
         END;
             
-        PERFORM pg_sleep(0.1);
+        PERFORM pg_sleep(1);
     END LOOP;
+
+    -- Final verification
+    IF EXISTS (
+        SELECT 1 
+        FROM transactions 
+        WHERE index_new IS NULL
+    ) THEN
+        RAISE EXCEPTION 'Migration incomplete: found unprocessed rows after completion';
+    END IF;
 END $$;
 -- +goose StatementEnd
 
@@ -52,3 +72,4 @@ BEGIN
     COMMIT;
 END $$;
 -- +goose StatementEnd
+
