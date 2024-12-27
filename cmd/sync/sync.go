@@ -172,14 +172,13 @@ func syncBlocks(pg *pgx.Conn, bc *node.BitcoinClient, sc *node.SpacesClient) err
 }
 
 func syncMempool(pg *pgx.Conn, bc *node.BitcoinClient, sc *node.SpacesClient) error {
-	// Get current mempool state
+	// Get current mempool state and existing mempool transactions
 	currentTxIds, err := bc.GetMempoolTxIds(context.Background())
 	if err != nil {
 		return err
 	}
 	log.Printf("found %d txs in current mempool", len(currentTxIds))
 
-	// Get existing mempool transactions
 	q := db.New(pg)
 	existingTxidsBytes, err := q.GetMempoolTxids(context.Background())
 	if err != nil {
@@ -190,7 +189,6 @@ func syncMempool(pg *pgx.Conn, bc *node.BitcoinClient, sc *node.SpacesClient) er
 	for _, txid := range existingTxidsBytes {
 		existingTxs[txid.String()] = struct{}{}
 	}
-
 	log.Printf("found %d txs in database mempool", len(existingTxs))
 
 	// Find transactions to delete and add
@@ -216,7 +214,7 @@ func syncMempool(pg *pgx.Conn, bc *node.BitcoinClient, sc *node.SpacesClient) er
 		}
 	}
 
-	// Delete old transactions
+	// Delete old transactions in a single transaction
 	if len(toDelete) > 0 {
 		log.Printf("deleting %d old transactions", len(toDelete))
 		sqlTx, err := pg.BeginTx(context.Background(), pgx.TxOptions{})
@@ -230,16 +228,13 @@ func syncMempool(pg *pgx.Conn, bc *node.BitcoinClient, sc *node.SpacesClient) er
 			if err := qtx.DeleteMempoolTxInputsByTxid(context.Background(), txid); err != nil {
 				return err
 			}
-
 			if err := qtx.DeleteMempoolTxOutputsByTxid(context.Background(), txid); err != nil {
 				return err
 			}
-
 			if err := qtx.DeleteMempoolTransactionByTxid(context.Background(), txid); err != nil {
 				return err
 			}
 		}
-
 		if err := sqlTx.Commit(context.Background()); err != nil {
 			return err
 		}
@@ -253,16 +248,9 @@ func syncMempool(pg *pgx.Conn, bc *node.BitcoinClient, sc *node.SpacesClient) er
 	var deadbeef Bytes
 	deadbeef.UnmarshalString(deadbeefString)
 
-	// Process new transactions in chunks
+	// Process new transactions in chunks, with separate transaction per chunk
 	log.Printf("processing %d new transactions", len(toAdd))
 
-	sqlTx, err := pg.BeginTx(context.Background(), pgx.TxOptions{})
-	if err != nil {
-		return err
-	}
-	defer sqlTx.Rollback(context.Background())
-
-	q = db.New(sqlTx)
 	for i := 0; i < len(toAdd); i += chunkSize {
 		end := i + chunkSize
 		if end > len(toAdd) {
@@ -270,17 +258,24 @@ func syncMempool(pg *pgx.Conn, bc *node.BitcoinClient, sc *node.SpacesClient) er
 		}
 		log.Printf("processing chunk #%d of new mempool txs", i/chunkSize+1)
 
+		// Start new transaction for this chunk
+		sqlTx, err := pg.BeginTx(context.Background(), pgx.TxOptions{})
+		if err != nil {
+			return err
+		}
+		defer sqlTx.Rollback(context.Background())
+
+		q = db.New(sqlTx)
 		var hexes []string
 		chunk := toAdd[i:end]
+
 		for _, txid := range chunk {
 			transaction, err := bc.GetTransaction(context.Background(), txid)
 			if err != nil {
 				continue
 			}
-
 			hexes = append(hexes, transaction.Hex.String())
 
-			// Pass nil as index for mempool transactions - will use sequence default
 			if err := store.StoreTransaction(q, transaction, &deadbeef, nil); err != nil {
 				return err
 			}
@@ -292,7 +287,6 @@ func syncMempool(pg *pgx.Conn, bc *node.BitcoinClient, sc *node.SpacesClient) er
 			if err != nil {
 				return err
 			}
-
 			for _, metaTx := range metaTxs {
 				if metaTx != nil {
 					if sqlTx, err = store.StoreSpacesTransaction(*metaTx, deadbeef, sqlTx); err != nil {
@@ -301,10 +295,11 @@ func syncMempool(pg *pgx.Conn, bc *node.BitcoinClient, sc *node.SpacesClient) er
 				}
 			}
 		}
-	}
 
-	if err := sqlTx.Commit(context.Background()); err != nil {
-		return err
+		// Commit this chunk's transaction
+		if err := sqlTx.Commit(context.Background()); err != nil {
+			return err
+		}
 	}
 
 	return nil
