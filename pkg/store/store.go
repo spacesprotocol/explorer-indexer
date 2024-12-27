@@ -316,6 +316,7 @@ func StoreTransaction(q *db.Queries, transaction *node.Transaction, blockHash *B
 		params := db.InsertTransactionParams{}
 		copier.Copy(&params, transaction)
 		params.BlockHash = *blockHash
+		params.Index = *txIndex
 		err = q.InsertTransaction(context.Background(), params)
 	} else {
 		params := db.InsertMempoolTransactionParams{}
