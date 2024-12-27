@@ -21,9 +21,18 @@ import (
 
 var activationBlock = getActivationBlock()
 var fastSyncBlockHeight = getFastSyncBlockHeight()
+var mempoolChunkSize = getMempoolChunkSize()
 
 const deadbeefString = "deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef"
-const chunkSize = 500
+
+func getMempoolChunkSize() int {
+	if height := os.Getenv("MEMPOOL_CHUNK_SIZE"); height != "" {
+		if h, err := strconv.ParseInt(height, 10, 32); err == nil {
+			return int(h)
+		}
+	}
+	return 200
+}
 
 func getActivationBlock() int32 {
 	if height := os.Getenv("ACTIVATION_BLOCK_HEIGHT"); height != "" {
@@ -251,12 +260,12 @@ func syncMempool(pg *pgx.Conn, bc *node.BitcoinClient, sc *node.SpacesClient) er
 	// Process new transactions in chunks, with separate transaction per chunk
 	log.Printf("processing %d new transactions", len(toAdd))
 
-	for i := 0; i < len(toAdd); i += chunkSize {
-		end := i + chunkSize
+	for i := 0; i < len(toAdd); i += mempoolChunkSize {
+		end := i + mempoolChunkSize
 		if end > len(toAdd) {
 			end = len(toAdd)
 		}
-		log.Printf("processing chunk #%d of new mempool txs", i/chunkSize+1)
+		log.Printf("processing chunk #%d of new mempool txs", i/mempoolChunkSize+1)
 
 		// Start new transaction for this chunk
 		sqlTx, err := pg.BeginTx(context.Background(), pgx.TxOptions{})
