@@ -24,6 +24,7 @@ var fastSyncBlockHeight = getFastSyncBlockHeight()
 var mempoolChunkSize = getMempoolChunkSize()
 
 const deadbeefString = "deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef"
+const mempoolSyncTimeout = 1 //in minutes
 
 func getMempoolChunkSize() int {
 	if height := os.Getenv("MEMPOOL_CHUNK_SIZE"); height != "" {
@@ -179,17 +180,18 @@ func syncBlocks(pg *pgx.Conn, bc *node.BitcoinClient, sc *node.SpacesClient) err
 	}
 	return nil
 }
-
 func syncMempool(pg *pgx.Conn, bc *node.BitcoinClient, sc *node.SpacesClient) error {
-	// Get current mempool state and existing mempool transactions
-	currentTxIds, err := bc.GetMempoolTxIds(context.Background())
+	ctx, cancel := context.WithTimeout(context.Background(), mempoolSyncTimeout*time.Minute)
+	defer cancel()
+
+	currentTxIds, err := bc.GetMempoolTxIds(ctx)
 	if err != nil {
 		return err
 	}
 	log.Printf("found %d txs in current mempool", len(currentTxIds))
 
 	q := db.New(pg)
-	existingTxidsBytes, err := q.GetMempoolTxids(context.Background())
+	existingTxidsBytes, err := q.GetMempoolTxids(ctx)
 	if err != nil {
 		return err
 	}
@@ -200,7 +202,6 @@ func syncMempool(pg *pgx.Conn, bc *node.BitcoinClient, sc *node.SpacesClient) er
 	}
 	log.Printf("found %d txs in database mempool", len(existingTxs))
 
-	// Find transactions to delete and add
 	var toDelete []Bytes
 	for _, txidBytes := range existingTxidsBytes {
 		txidStr := txidBytes.String()
@@ -223,28 +224,27 @@ func syncMempool(pg *pgx.Conn, bc *node.BitcoinClient, sc *node.SpacesClient) er
 		}
 	}
 
-	// Delete old transactions in a single transaction
 	if len(toDelete) > 0 {
 		log.Printf("deleting %d old transactions", len(toDelete))
-		sqlTx, err := pg.BeginTx(context.Background(), pgx.TxOptions{})
+		sqlTx, err := pg.BeginTx(ctx, pgx.TxOptions{})
 		if err != nil {
 			return err
 		}
-		defer sqlTx.Rollback(context.Background())
+		defer sqlTx.Rollback(ctx)
 
 		qtx := db.New(sqlTx)
 		for _, txid := range toDelete {
-			if err := qtx.DeleteMempoolTxInputsByTxid(context.Background(), txid); err != nil {
+			if err := qtx.DeleteMempoolTxInputsByTxid(ctx, txid); err != nil {
 				return err
 			}
-			if err := qtx.DeleteMempoolTxOutputsByTxid(context.Background(), txid); err != nil {
+			if err := qtx.DeleteMempoolTxOutputsByTxid(ctx, txid); err != nil {
 				return err
 			}
-			if err := qtx.DeleteMempoolTransactionByTxid(context.Background(), txid); err != nil {
+			if err := qtx.DeleteMempoolTransactionByTxid(ctx, txid); err != nil {
 				return err
 			}
 		}
-		if err := sqlTx.Commit(context.Background()); err != nil {
+		if err := sqlTx.Commit(ctx); err != nil {
 			return err
 		}
 	}
@@ -257,29 +257,35 @@ func syncMempool(pg *pgx.Conn, bc *node.BitcoinClient, sc *node.SpacesClient) er
 	var deadbeef Bytes
 	deadbeef.UnmarshalString(deadbeefString)
 
-	// Process new transactions in chunks, with separate transaction per chunk
 	log.Printf("processing %d new transactions", len(toAdd))
 
 	for i := 0; i < len(toAdd); i += mempoolChunkSize {
+		select {
+		case <-ctx.Done():
+			log.Printf("mempool sync timed out after processing %d transactions", i)
+			return ctx.Err()
+		default:
+		}
+
 		end := i + mempoolChunkSize
 		if end > len(toAdd) {
 			end = len(toAdd)
 		}
 		log.Printf("processing chunk #%d of new mempool txs", i/mempoolChunkSize+1)
 
-		// Start new transaction for this chunk
-		sqlTx, err := pg.BeginTx(context.Background(), pgx.TxOptions{})
+		sqlTx, err := pg.BeginTx(ctx, pgx.TxOptions{})
 		if err != nil {
 			return err
 		}
-		defer sqlTx.Rollback(context.Background())
+		rollbackTx := sqlTx
+		defer rollbackTx.Rollback(ctx)
 
 		q = db.New(sqlTx)
 		var hexes []string
 		chunk := toAdd[i:end]
 
 		for _, txid := range chunk {
-			transaction, err := bc.GetTransaction(context.Background(), txid)
+			transaction, err := bc.GetTransaction(ctx, txid)
 			if err != nil {
 				continue
 			}
@@ -290,9 +296,8 @@ func syncMempool(pg *pgx.Conn, bc *node.BitcoinClient, sc *node.SpacesClient) er
 			}
 		}
 
-		// Process spaces transactions for this chunk
 		if len(hexes) > 0 {
-			metaTxs, err := sc.CheckPackage(context.Background(), hexes)
+			metaTxs, err := sc.CheckPackage(ctx, hexes)
 			if err != nil {
 				return err
 			}
@@ -305,8 +310,7 @@ func syncMempool(pg *pgx.Conn, bc *node.BitcoinClient, sc *node.SpacesClient) er
 			}
 		}
 
-		// Commit this chunk's transaction
-		if err := sqlTx.Commit(context.Background()); err != nil {
+		if err := sqlTx.Commit(ctx); err != nil {
 			return err
 		}
 	}
