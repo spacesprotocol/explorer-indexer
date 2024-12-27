@@ -61,30 +61,42 @@ func main() {
 	sc := node.SpacesClient{Client: spacesClient}
 	bc := node.BitcoinClient{Client: bitcoinClient}
 
-	pg, err := pgx.Connect(context.Background(), os.Getenv("POSTGRES_URI"))
-	if err != nil {
-		log.Fatalln(err)
-	}
-
 	updateInterval, err := strconv.Atoi(os.Getenv("UPDATE_DB_INTERVAL"))
 	if err != nil {
 		log.Fatalln(err)
 	}
 
 	for {
+		connCtx, cancel := context.WithTimeout(context.Background(), time.Minute)
+
+		pg, err := pgx.Connect(connCtx, os.Getenv("POSTGRES_URI"))
+		cancel()
+
+		if err != nil {
+			log.Printf("failed to connect to database: %v", err)
+			time.Sleep(time.Second)
+			continue
+		}
+
+		defer pg.Close(context.Background())
 
 		if err := syncBlocks(pg, &bc, &sc); err != nil {
 			log.Println(err)
+			pg.Close(context.Background())
 			time.Sleep(time.Second)
+			continue
 		}
 
 		if err := syncMempool(pg, &bc, &sc); err != nil {
 			log.Println(err)
 		}
 
+		if err := pg.Close(context.Background()); err != nil {
+			log.Printf("error closing connection: %v", err)
+		}
+
 		time.Sleep(time.Duration(updateInterval) * time.Second)
 	}
-
 }
 
 func syncRollouts(ctx context.Context, pg *pgx.Conn, sc *node.SpacesClient) error {
