@@ -16,6 +16,8 @@ import (
 	. "github.com/spacesprotocol/explorer-backend/pkg/types"
 )
 
+const deadbeefString = "deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef"
+
 func StoreSpacesTransactions(txs []node.MetaTransaction, blockHash Bytes, sqlTx pgx.Tx) (pgx.Tx, error) {
 	for _, tx := range txs {
 		sqlTx, err := StoreSpacesTransaction(tx, blockHash, sqlTx)
@@ -256,7 +258,7 @@ func StoreBitcoinBlock(block *node.Block, tx pgx.Tx) (pgx.Tx, error) {
 	}
 	if wasInserted {
 		for tx_index, transaction := range block.Transactions {
-			ind := int64(tx_index)
+			ind := int32(tx_index)
 			if err := StoreTransaction(q, &transaction, &blockParams.Hash, &ind); err != nil {
 				return tx, err
 			}
@@ -304,27 +306,30 @@ func updateTxSpenders(q *db.Queries, transaction *node.Transaction, blockHash By
 	return nil
 }
 
-func StoreTransaction(q *db.Queries, transaction *node.Transaction, blockHash *Bytes, txIndex *int64) error {
+func StoreTransaction(q *db.Queries, transaction *node.Transaction, blockHash *Bytes, txIndex *int32) error {
 	transactionParams := db.InsertTransactionParams{}
 	copier.Copy(&transactionParams, &transaction)
 	transactionParams.BlockHash = *blockHash
-	var nullableIndex pgtype.Int8
-	if txIndex == nil {
-		nullableIndex.Valid = false
-	} else {
-		nullableIndex.Valid = true
-		nullableIndex.Int64 = *txIndex
-	}
-	transactionParams.Index = nullableIndex
 
-	if err := q.InsertTransaction(context.Background(), transactionParams); err != nil {
+	var err error
+	if blockHash.String() != deadbeefString {
+		params := db.InsertTransactionParams{}
+		copier.Copy(&params, transaction)
+		params.BlockHash = *blockHash
+		err = q.InsertTransaction(context.Background(), params)
+	} else {
+		params := db.InsertMempoolTransactionParams{}
+		copier.Copy(&params, transaction)
+		params.BlockHash = *blockHash
+		err = q.InsertMempoolTransaction(context.Background(), params)
+	}
+
+	if err != nil {
 		return err
 	}
-
 	inputs := make([]db.InsertBatchTxInputsParams, 0, len(transaction.Vin))
 
 	for input_index, txInput := range transaction.Vin {
-
 		var scriptSig Bytes
 		if txInput.ScriptSig != nil {
 			if err := scriptSig.UnmarshalText([]byte(txInput.ScriptSig.Hex)); err != nil {

@@ -273,13 +273,6 @@ func syncMempool(pg *pgx.Conn, bc *node.BitcoinClient, sc *node.SpacesClient) er
 		var hexes []string
 		chunk := toAdd[i:end]
 		for _, txid := range chunk {
-			indexBytes := txid[:15]
-			ind64, err := strconv.ParseInt(indexBytes, 16, 64)
-			if err != nil {
-				return err
-			}
-			ind := -(ind64 & 0x3fffffffffffffff)
-
 			transaction, err := bc.GetTransaction(context.Background(), txid)
 			if err != nil {
 				continue
@@ -287,7 +280,8 @@ func syncMempool(pg *pgx.Conn, bc *node.BitcoinClient, sc *node.SpacesClient) er
 
 			hexes = append(hexes, transaction.Hex.String())
 
-			if err := store.StoreTransaction(q, transaction, &deadbeef, &ind); err != nil {
+			// Pass nil as index for mempool transactions - will use sequence default
+			if err := store.StoreTransaction(q, transaction, &deadbeef, nil); err != nil {
 				return err
 			}
 		}

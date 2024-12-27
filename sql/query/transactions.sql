@@ -1,8 +1,15 @@
 -- name: InsertTransaction :exec
-INSERT INTO transactions (txid, tx_hash, version, size, vsize, weight, locktime, fee, block_hash, index)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10);
+INSERT INTO transactions (
+    txid, tx_hash, version, size, vsize, weight, locktime, fee, block_hash, index
+) VALUES ( $1, $2, $3, $4, $5, $6, $7, $8, $9, $10);
 
--- name: GetTransactionByTxid :one
+-- name: InsertMempoolTransaction :exec
+INSERT INTO transactions (
+    txid, tx_hash, version, size, vsize, weight, locktime, fee, block_hash
+) VALUES ( $1, $2, $3, $4, $5, $6, $7, $8, $9);
+
+
+--- name: GetTransactionByTxid :one
 SELECT
   transactions.*,
   COALESCE(blocks.height, -1)::integer AS block_height_not_null

@@ -104,48 +104,6 @@ func (q *Queries) GetMempoolTxids(ctx context.Context) ([]types.Bytes, error) {
 	return items, nil
 }
 
-const getTransactionByTxid = `-- name: GetTransactionByTxid :one
-SELECT
-  transactions.txid, transactions.tx_hash, transactions.version, transactions.size, transactions.vsize, transactions.weight, transactions.locktime, transactions.fee, transactions.block_hash, transactions.index,
-  COALESCE(blocks.height, -1)::integer AS block_height_not_null
-FROM transactions
-  LEFT JOIN blocks ON (transactions.block_hash = blocks.hash)
-WHERE transactions.txid = $1
-`
-
-type GetTransactionByTxidRow struct {
-	Txid               types.Bytes
-	TxHash             types.Bytes
-	Version            int32
-	Size               int64
-	Vsize              int64
-	Weight             int64
-	Locktime           int32
-	Fee                int64
-	BlockHash          types.Bytes
-	Index              pgtype.Int8
-	BlockHeightNotNull int32
-}
-
-func (q *Queries) GetTransactionByTxid(ctx context.Context, txid types.Bytes) (GetTransactionByTxidRow, error) {
-	row := q.db.QueryRow(ctx, getTransactionByTxid, txid)
-	var i GetTransactionByTxidRow
-	err := row.Scan(
-		&i.Txid,
-		&i.TxHash,
-		&i.Version,
-		&i.Size,
-		&i.Vsize,
-		&i.Weight,
-		&i.Locktime,
-		&i.Fee,
-		&i.BlockHash,
-		&i.Index,
-		&i.BlockHeightNotNull,
-	)
-	return i, err
-}
-
 const getTransactionsByBlockHeight = `-- name: GetTransactionsByBlockHeight :many
 SELECT
   transactions.txid, transactions.tx_hash, transactions.version, transactions.size, transactions.vsize, transactions.weight, transactions.locktime, transactions.fee, transactions.block_hash, transactions.index,
@@ -174,7 +132,7 @@ type GetTransactionsByBlockHeightRow struct {
 	Locktime           int32
 	Fee                int64
 	BlockHash          types.Bytes
-	Index              pgtype.Int8
+	Index              pgtype.Int4
 	BlockHeightNotNull int32
 }
 
@@ -210,9 +168,43 @@ func (q *Queries) GetTransactionsByBlockHeight(ctx context.Context, arg GetTrans
 	return items, nil
 }
 
+const insertMempoolTransaction = `-- name: InsertMempoolTransaction :exec
+INSERT INTO transactions (
+    txid, tx_hash, version, size, vsize, weight, locktime, fee, block_hash
+) VALUES ( $1, $2, $3, $4, $5, $6, $7, $8, $9)
+`
+
+type InsertMempoolTransactionParams struct {
+	Txid      types.Bytes
+	TxHash    types.Bytes
+	Version   int32
+	Size      int64
+	Vsize     int64
+	Weight    int64
+	Locktime  int32
+	Fee       int64
+	BlockHash types.Bytes
+}
+
+func (q *Queries) InsertMempoolTransaction(ctx context.Context, arg InsertMempoolTransactionParams) error {
+	_, err := q.db.Exec(ctx, insertMempoolTransaction,
+		arg.Txid,
+		arg.TxHash,
+		arg.Version,
+		arg.Size,
+		arg.Vsize,
+		arg.Weight,
+		arg.Locktime,
+		arg.Fee,
+		arg.BlockHash,
+	)
+	return err
+}
+
 const insertTransaction = `-- name: InsertTransaction :exec
-INSERT INTO transactions (txid, tx_hash, version, size, vsize, weight, locktime, fee, block_hash, index)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+INSERT INTO transactions (
+    txid, tx_hash, version, size, vsize, weight, locktime, fee, block_hash, index
+) VALUES ( $1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 `
 
 type InsertTransactionParams struct {
@@ -225,7 +217,7 @@ type InsertTransactionParams struct {
 	Locktime  int32
 	Fee       int64
 	BlockHash types.Bytes
-	Index     pgtype.Int8
+	Index     pgtype.Int4
 }
 
 func (q *Queries) InsertTransaction(ctx context.Context, arg InsertTransactionParams) error {
