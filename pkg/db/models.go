@@ -91,7 +91,7 @@ type Transaction struct {
 	Locktime  int32
 	Fee       int64
 	BlockHash types.Bytes
-	Index     pgtype.Int4
+	Index     int32
 }
 
 type TxInput struct {

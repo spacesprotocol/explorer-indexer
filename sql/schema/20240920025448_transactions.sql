@@ -10,7 +10,7 @@ CREATE TABLE transactions (
     locktime integer NOT NULL,
     fee bigint NOT NULL,
     block_hash bytea REFERENCES blocks (hash) ON DELETE CASCADE,
-    "index" integer,
+    "index" integer NOT NULL,
 
     PRIMARY KEY (block_hash, txid),
     UNIQUE (block_hash, txid)

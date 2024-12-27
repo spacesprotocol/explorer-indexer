@@ -8,7 +8,6 @@ package db
 import (
 	"context"
 
-	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/spacesprotocol/explorer-backend/pkg/types"
 )
 
@@ -132,7 +131,7 @@ type GetTransactionsByBlockHeightRow struct {
 	Locktime           int32
 	Fee                int64
 	BlockHash          types.Bytes
-	Index              pgtype.Int4
+	Index              int32
 	BlockHeightNotNull int32
 }
 
@@ -217,7 +216,7 @@ type InsertTransactionParams struct {
 	Locktime  int32
 	Fee       int64
 	BlockHash types.Bytes
-	Index     pgtype.Int4
+	Index     int32
 }
 
 func (q *Queries) InsertTransaction(ctx context.Context, arg InsertTransactionParams) error {
