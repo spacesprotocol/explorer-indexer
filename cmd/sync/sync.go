@@ -192,6 +192,7 @@ func syncBlocks(pg *pgx.Conn, bc *node.BitcoinClient, sc *node.SpacesClient) err
 	}
 	return nil
 }
+
 func syncMempool(pg *pgx.Conn, bc *node.BitcoinClient, sc *node.SpacesClient) error {
 	ctx, cancel := context.WithTimeout(context.Background(), mempoolSyncTimeout*time.Minute)
 	defer cancel()
@@ -202,36 +203,36 @@ func syncMempool(pg *pgx.Conn, bc *node.BitcoinClient, sc *node.SpacesClient) er
 	}
 	log.Printf("found %d txs in current mempool", len(currentTxIds))
 
+	currentTxMap := make(map[string]struct{}, len(currentTxIds))
+	for _, txid := range currentTxIds {
+		currentTxMap[txid] = struct{}{}
+	}
+
 	q := db.New(pg)
 	existingTxidsBytes, err := q.GetMempoolTxids(ctx)
 	if err != nil {
 		return err
 	}
 
-	existingTxs := make(map[string]struct{})
+	// Build maps in a single pass for both lookup and to-add calculation
+	existingTxMap := make(map[string]Bytes, len(existingTxidsBytes))
 	for _, txid := range existingTxidsBytes {
-		existingTxs[txid.String()] = struct{}{}
+		existingTxMap[txid.String()] = txid
 	}
-	log.Printf("found %d txs in database mempool", len(existingTxs))
+	log.Printf("found %d txs in database mempool", len(existingTxMap))
 
+	// Find transactions to delete using map lookup
 	var toDelete []Bytes
-	for _, txidBytes := range existingTxidsBytes {
-		txidStr := txidBytes.String()
-		found := false
-		for _, currentTxid := range currentTxIds {
-			if txidStr == currentTxid {
-				found = true
-				break
-			}
-		}
-		if !found {
+	for txidStr, txidBytes := range existingTxMap {
+		if _, exists := currentTxMap[txidStr]; !exists {
 			toDelete = append(toDelete, txidBytes)
 		}
 	}
 
+	// Find transactions to add using map lookup
 	var toAdd []string
-	for _, txid := range currentTxIds {
-		if _, exists := existingTxs[txid]; !exists {
+	for txid := range currentTxMap {
+		if _, exists := existingTxMap[txid]; !exists {
 			toAdd = append(toAdd, txid)
 		}
 	}
