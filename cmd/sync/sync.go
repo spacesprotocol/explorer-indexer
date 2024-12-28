@@ -198,19 +198,18 @@ func syncMempool(pg *pgx.Conn, bc *node.BitcoinClient, sc *node.SpacesClient) er
 	defer cancel()
 
 	// Get current mempool txs grouped by dependencies
-	currentTxGroups, err := bc.GetMempoolTxIds(ctx)
+	currentGroups, err := bc.GetMempoolTxIds(ctx)
 	if err != nil {
 		return err
 	}
 
-	// Create map for all current txs
+	// Build current mempool map
 	currentTxMap := make(map[string]struct{})
-	for _, group := range currentTxGroups {
+	for _, group := range currentGroups {
 		for _, txid := range group {
 			currentTxMap[txid] = struct{}{}
 		}
 	}
-	log.Printf("found %d txs in current mempool", len(currentTxMap))
 
 	// Get existing mempool txs from DB
 	q := db.New(pg)
@@ -219,14 +218,36 @@ func syncMempool(pg *pgx.Conn, bc *node.BitcoinClient, sc *node.SpacesClient) er
 		return err
 	}
 
-	// Build map of existing txs
 	existingTxMap := make(map[string]Bytes, len(existingTxidsBytes))
 	for _, txid := range existingTxidsBytes {
 		existingTxMap[txid.String()] = txid
 	}
-	log.Printf("found %d txs in database mempool", len(existingTxMap))
 
-	// Find transactions to delete
+	// Delete outdated transactions
+	if err := cleanupMempoolTxs(ctx, pg, currentTxMap, existingTxMap); err != nil {
+		return err
+	}
+
+	var deadbeef Bytes
+	deadbeef.UnmarshalString(deadbeefString)
+
+	// Process transaction groups
+	for _, txGroup := range currentGroups {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+		}
+
+		if err := processTxGroup(ctx, pg, bc, sc, txGroup, existingTxMap, deadbeef); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func cleanupMempoolTxs(ctx context.Context, pg *pgx.Conn, currentTxMap map[string]struct{}, existingTxMap map[string]Bytes) error {
 	var toDelete []Bytes
 	for txidStr, txidBytes := range existingTxMap {
 		if _, exists := currentTxMap[txidStr]; !exists {
@@ -234,9 +255,7 @@ func syncMempool(pg *pgx.Conn, bc *node.BitcoinClient, sc *node.SpacesClient) er
 		}
 	}
 
-	// Delete old transactions
 	if len(toDelete) > 0 {
-		log.Printf("deleting %d old transactions", len(toDelete))
 		sqlTx, err := pg.BeginTx(ctx, pgx.TxOptions{})
 		if err != nil {
 			return err
@@ -255,82 +274,55 @@ func syncMempool(pg *pgx.Conn, bc *node.BitcoinClient, sc *node.SpacesClient) er
 				return err
 			}
 		}
-		if err := sqlTx.Commit(ctx); err != nil {
-			return err
+		return sqlTx.Commit(ctx)
+	}
+	return nil
+}
+
+func processTxGroup(ctx context.Context, pg *pgx.Conn, bc *node.BitcoinClient, sc *node.SpacesClient,
+	txGroup []string, existingTxMap map[string]Bytes, deadbeef Bytes) error {
+
+	sqlTx, err := pg.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		return err
+	}
+	defer sqlTx.Rollback(ctx)
+
+	q := db.New(sqlTx)
+	var hexes []string
+
+	// Get all txs for spaces node
+	for _, txid := range txGroup {
+		tx, err := bc.GetTransaction(ctx, txid)
+		if err != nil {
+			continue
+		}
+		hexes = append(hexes, tx.Hex.String())
+
+		// Store only if not in DB
+		if _, exists := existingTxMap[txid]; !exists {
+			if err := store.StoreTransaction(q, tx, &deadbeef, nil); err != nil {
+				return err
+			}
 		}
 	}
 
-	var deadbeef Bytes
-	deadbeef.UnmarshalString(deadbeefString)
-
-	// Process each group
-	for groupIdx, txGroup := range currentTxGroups {
-		select {
-		case <-ctx.Done():
-			log.Printf("mempool sync timed out after processing %d groups", groupIdx)
-			return ctx.Err()
-		default:
-		}
-
-		// Skip if all txs in group already exist
-		allExist := true
-		for _, txid := range txGroup {
-			if _, exists := existingTxMap[txid]; !exists {
-				allExist = false
-				break
-			}
-		}
-		if allExist {
-			continue
-		}
-
-		// log.Printf("processing group %d/%d with %d transactions", groupIdx+1, len(currentTxGroups), len(txGroup))
-
-		sqlTx, err := pg.BeginTx(ctx, pgx.TxOptions{})
+	if len(hexes) > 0 {
+		metaTxs, err := sc.CheckPackage(ctx, hexes)
 		if err != nil {
 			return err
 		}
-		rollbackTx := sqlTx
-		defer rollbackTx.Rollback(ctx)
-
-		q = db.New(sqlTx)
-		var hexes []string
-
-		for _, txid := range txGroup {
-			// Skip if tx already exists
-			if _, exists := existingTxMap[txid]; exists {
-				continue
-			}
-
-			transaction, err := bc.GetTransaction(ctx, txid)
-			if err != nil {
-				continue
-			}
-			hexes = append(hexes, transaction.Hex.String())
-
-			if err := store.StoreTransaction(q, transaction, &deadbeef, nil); err != nil {
-				return err
-			}
-		}
-
-		if len(hexes) > 0 {
-			metaTxs, err := sc.CheckPackage(ctx, hexes)
-			if err != nil {
-				return err
-			}
-			for _, metaTx := range metaTxs {
-				if metaTx != nil {
+		for _, metaTx := range metaTxs {
+			if metaTx != nil {
+				txid := metaTx.TxID.String()
+				if _, exists := existingTxMap[txid]; !exists {
 					if sqlTx, err = store.StoreSpacesTransaction(*metaTx, deadbeef, sqlTx); err != nil {
 						return err
 					}
 				}
 			}
 		}
-
-		if err := sqlTx.Commit(ctx); err != nil {
-			return err
-		}
 	}
 
-	return nil
+	return sqlTx.Commit(ctx)
 }

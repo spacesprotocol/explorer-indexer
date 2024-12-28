@@ -4,6 +4,8 @@
 spaced --block-index --chain=regtest --bitcoin-rpc-user=test --bitcoin-rpc-password=test --bitcoin-rpc-url=http://bitcoin:18443 --rpc-bind=0.0.0.0 &
 SPACED_PID=$!
 
+sleep 2
+
 # Wait for both Bitcoin and Spaced to be ready
 BLOCK_COUNT=$(PGPASSWORD=postgres psql -h db -U postgres -d postgres -t -c "SELECT COUNT(*) FROM blocks;" | tr -d ' ')
 echo "found $BLOCK_COUNT block(s)"
@@ -47,7 +49,7 @@ EOL
         space-cli --chain regtest open "$SPACE" --fee-rate=1
         
         curl -s -u test:test --data-binary "{\"jsonrpc\": \"1.0\", \"id\":\"mine\", \"method\": \"generatetoaddress\", \"params\": [1, \"$ADDRESS\"]}" -H 'content-type: text/plain;' http://bitcoin:18443/
-        sleep 0.1
+        sleep 0.5
     done
 
     # Mine 144 more blocks
