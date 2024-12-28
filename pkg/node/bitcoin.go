@@ -3,9 +3,12 @@ package node
 import (
 	"context"
 	"log"
+	"sort"
 
 	. "github.com/spacesprotocol/explorer-backend/pkg/types"
 )
+
+var mempoolChunkSize = 200
 
 type BitcoinClient struct {
 	*Client
@@ -91,11 +94,83 @@ func (client *BitcoinClient) GetMempoolTxs(ctx context.Context) ([]Transaction, 
 	return txs, nil
 }
 
-func (client *BitcoinClient) GetMempoolTxIds(ctx context.Context) ([]string, error) {
-	var txids []string
-	err := client.Rpc(ctx, "getrawmempool", nil, &txids)
+type MempoolTx struct {
+	Time    int64    `json:"time"`
+	Depends []string `json:"depends"`
+}
+
+func (client *BitcoinClient) GetMempoolTxIds(ctx context.Context) ([][]string, error) {
+	response := make(map[string]MempoolTx)
+	err := client.Rpc(ctx, "getrawmempool", []interface{}{true}, &response)
 	if err != nil {
 		return nil, err
 	}
-	return txids, nil
+
+	// Build dependency graph
+	deps := make(map[string][]string) // txid -> list of txs that depend on it
+	for txid, info := range response {
+		for _, dep := range info.Depends {
+			deps[dep] = append(deps[dep], txid)
+		}
+	}
+
+	var orderedGroups [][]string
+	processed := make(map[string]bool)
+
+	// Process transactions with their dependencies into ordered groups
+	var processGroup func(txid string) []string
+	processGroup = func(txid string) []string {
+		if processed[txid] {
+			return nil
+		}
+
+		// Process this tx
+		processed[txid] = true
+		result := []string{txid}
+
+		// Get all direct dependents and sort them by time
+		dependents := deps[txid]
+		sort.Slice(dependents, func(i, j int) bool {
+			return response[dependents[i]].Time < response[dependents[j]].Time
+		})
+
+		// Process each dependent
+		for _, dep := range dependents {
+			if childGroup := processGroup(dep); childGroup != nil {
+				result = append(result, childGroup...)
+			}
+		}
+		return result
+	}
+
+	// Start with independent transactions
+	var independentTxs []string
+	for txid, info := range response {
+		if !processed[txid] && len(info.Depends) == 0 {
+			independentTxs = append(independentTxs, txid)
+		}
+	}
+
+	// Sort independent transactions by time
+	sort.Slice(independentTxs, func(i, j int) bool {
+		return response[independentTxs[i]].Time < response[independentTxs[j]].Time
+	})
+
+	// Process each independent transaction and its dependency chain
+	for _, txid := range independentTxs {
+		if group := processGroup(txid); group != nil {
+			orderedGroups = append(orderedGroups, group)
+		}
+	}
+
+	// Handle any remaining transactions (cycles)
+	for txid := range response {
+		if !processed[txid] {
+			if group := processGroup(txid); group != nil {
+				orderedGroups = append(orderedGroups, group)
+			}
+		}
+	}
+
+	return orderedGroups, nil
 }

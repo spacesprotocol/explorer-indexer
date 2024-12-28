@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"strings"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -17,6 +18,55 @@ import (
 )
 
 const deadbeefString = "deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef"
+
+// blockTimings collects timing statistics for block processing
+type blockTimings struct {
+	baseInsertTime time.Duration
+	inputsTime     time.Duration
+	outputsTime    time.Duration
+	spendersTime   time.Duration
+	spacesTime     time.Duration
+	totalTxs       int
+	totalInputs    int
+	totalOutputs   int
+	totalSpenders  int
+	totalSpacesTxs int
+}
+
+func (bt *blockTimings) report(blockHeight int32) {
+	log.Printf("Block %d timing summary:", blockHeight)
+	log.Printf("  Total transactions: %d", bt.totalTxs)
+	log.Printf("  Base tx insert time: %s (avg: %s per tx)",
+		bt.baseInsertTime,
+		time.Duration(int64(bt.baseInsertTime)/int64(max(1, bt.totalTxs))))
+	log.Printf("  Inputs processing: %s for %d inputs (avg: %s per input)",
+		bt.inputsTime,
+		bt.totalInputs,
+		time.Duration(int64(bt.inputsTime)/int64(max(1, bt.totalInputs))))
+	log.Printf("  Outputs processing: %s for %d outputs (avg: %s per output)",
+		bt.outputsTime,
+		bt.totalOutputs,
+		time.Duration(int64(bt.outputsTime)/int64(max(1, bt.totalOutputs))))
+	log.Printf("  Spenders processing: %s for %d spenders (avg: %s per spender)",
+		bt.spendersTime,
+		bt.totalSpenders,
+		time.Duration(int64(bt.spendersTime)/int64(max(1, bt.totalSpenders))))
+	if bt.totalSpacesTxs > 0 {
+		log.Printf("  Spaces transactions: %s for %d txs (avg: %s per tx)",
+			bt.spacesTime,
+			bt.totalSpacesTxs,
+			time.Duration(int64(bt.spacesTime)/int64(bt.totalSpacesTxs)))
+	}
+	log.Printf("  Total processing time: %s",
+		bt.baseInsertTime+bt.inputsTime+bt.outputsTime+bt.spendersTime+bt.spacesTime)
+}
+
+func max(a, b int) int {
+	if a > b {
+		return a
+	}
+	return b
+}
 
 func StoreSpacesTransactions(txs []node.MetaTransaction, blockHash Bytes, sqlTx pgx.Tx) (pgx.Tx, error) {
 	for _, tx := range txs {
@@ -248,43 +298,137 @@ func StoreSpacesTransaction(tx node.MetaTransaction, blockHash Bytes, sqlTx pgx.
 	return sqlTx, nil
 }
 
-func StoreBitcoinBlock(block *node.Block, tx pgx.Tx) (pgx.Tx, error) {
+func StoreBitcoinBlock(block *node.Block, tx pgx.Tx) (pgx.Tx, error, *blockTimings) {
+	timings := &blockTimings{}
+
 	q := db.New(tx)
 	blockParams := db.UpsertBlockParams{}
 	copier.Copy(&blockParams, &block)
+
 	wasInserted, err := q.UpsertBlock(context.Background(), blockParams)
 	if err != nil {
-		return tx, err
+		return tx, err, timings
 	}
+
 	if wasInserted {
+		timings.totalTxs = len(block.Transactions)
 		for tx_index, transaction := range block.Transactions {
 			ind := int32(tx_index)
-			if err := StoreTransaction(q, &transaction, &blockParams.Hash, &ind); err != nil {
-				return tx, err
+			if tx_index%50 == 0 {
+				log.Print("tx index ", tx_index, " tx_hash ", transaction.Txid.String())
+			}
+
+			// Base transaction insert
+			start := time.Now()
+			err = storeTransactionBase(q, &transaction, &blockParams.Hash, &ind)
+			timings.baseInsertTime += time.Since(start)
+			if err != nil {
+				return tx, err, timings
+			}
+
+			// Store inputs/outputs with timing
+			start = time.Now()
+			inCount, outCount, err := storeInputsOutputs(q, &transaction, &blockParams.Hash)
+			ioTime := time.Since(start)
+			if err != nil {
+				return tx, err, timings
+			}
+			// Split the I/O time proportionally between inputs and outputs
+			if total := inCount + outCount; total > 0 {
+				timings.inputsTime += ioTime * time.Duration(inCount) / time.Duration(total)
+				timings.outputsTime += ioTime * time.Duration(outCount) / time.Duration(total)
+			}
+			timings.totalInputs += inCount
+			timings.totalOutputs += outCount
+
+			// Update spenders
+			start = time.Now()
+			spendCount, err := updateTxSpenders(q, &transaction, blockParams.Hash)
+			timings.spendersTime += time.Since(start)
+			if err != nil {
+				return tx, err, timings
+			}
+			timings.totalSpenders += spendCount
+		}
+	}
+
+	return tx, nil, timings
+}
+
+func storeTransactionBase(q *db.Queries, transaction *node.Transaction, blockHash *Bytes, txIndex *int32) error {
+	if blockHash.String() != deadbeefString {
+		params := db.InsertTransactionParams{}
+		copier.Copy(&params, transaction)
+		params.BlockHash = *blockHash
+		params.Index = *txIndex
+		return q.InsertTransaction(context.Background(), params)
+	}
+	params := db.InsertMempoolTransactionParams{}
+	copier.Copy(&params, transaction)
+	params.BlockHash = *blockHash
+	return q.InsertMempoolTransaction(context.Background(), params)
+}
+
+func storeInputsOutputs(q *db.Queries, transaction *node.Transaction, blockHash *Bytes) (inputCount, outputCount int, err error) {
+	inputs := make([]db.InsertBatchTxInputsParams, 0, len(transaction.Vin))
+	outputs := make([]db.InsertBatchTxOutputsParams, 0, len(transaction.Vout))
+
+	// Prepare inputs
+	for input_index, txInput := range transaction.Vin {
+		var scriptSig Bytes
+		if txInput.ScriptSig != nil {
+			if err := scriptSig.UnmarshalText([]byte(txInput.ScriptSig.Hex)); err != nil {
+				return 0, 0, fmt.Errorf("failed to unmarshal scriptsig: %w", err)
 			}
 		}
+		inputParam := db.InsertBatchTxInputsParams{
+			BlockHash:    *blockHash,
+			Txid:         transaction.Txid,
+			Index:        int64(input_index),
+			HashPrevout:  txInput.HashPrevout,
+			IndexPrevout: int64(txInput.IndexPrevout),
+			Sequence:     int64(txInput.Sequence),
+			Coinbase:     txInput.Coinbase,
+			Txinwitness:  txInput.TxinWitness,
+			Scriptsig:    &scriptSig,
+		}
+		inputs = append(inputs, inputParam)
 	}
-	return tx, nil
-}
 
-func UpdateBlockSpender(block *node.Block, tx pgx.Tx) (pgx.Tx, error) {
-	log.Printf("updating spenders from the block %d", block.Height)
-	q := db.New(tx)
-	for _, transaction := range block.Transactions {
-		if err := updateTxSpenders(q, &transaction, block.Hash); err != nil {
-			return tx, err
+	// Prepare outputs
+	for output_index, txOutput := range transaction.Vout {
+		outputParam := db.InsertBatchTxOutputsParams{
+			BlockHash:    *blockHash,
+			Txid:         transaction.Txid,
+			Index:        int64(output_index),
+			Value:        int64(txOutput.Value()),
+			Scriptpubkey: *txOutput.Scriptpubkey(),
+		}
+		outputs = append(outputs, outputParam)
+	}
+
+	if len(inputs) > 0 {
+		if _, err := q.InsertBatchTxInputs(context.Background(), inputs); err != nil {
+			return 0, 0, fmt.Errorf("batch insert inputs: %w", err)
 		}
 	}
-	return tx, nil
+
+	if len(outputs) > 0 {
+		if _, err := q.InsertBatchTxOutputs(context.Background(), outputs); err != nil {
+			return 0, 0, fmt.Errorf("batch insert outputs: %w", err)
+		}
+	}
+
+	return len(inputs), len(outputs), nil
 }
 
-func updateTxSpenders(q *db.Queries, transaction *node.Transaction, blockHash Bytes) error {
+func updateTxSpenders(q *db.Queries, transaction *node.Transaction, blockHash Bytes) (int, error) {
 	batchParams := db.SetSpenderBatchParams{
-		Column1: make([]Bytes, 0, len(transaction.Vin)), // txids
-		Column2: make([]int64, 0, len(transaction.Vin)), // indices
-		Column3: make([]Bytes, 0, len(transaction.Vin)), // spender_txids
-		Column4: make([]int64, 0, len(transaction.Vin)), // spender_indices
-		Column5: make([]Bytes, 0, len(transaction.Vin)), // spender_block_hashes
+		Column1: make([]Bytes, 0, len(transaction.Vin)),
+		Column2: make([]int64, 0, len(transaction.Vin)),
+		Column3: make([]Bytes, 0, len(transaction.Vin)),
+		Column4: make([]int64, 0, len(transaction.Vin)),
+		Column5: make([]Bytes, 0, len(transaction.Vin)),
 	}
 
 	for input_index, txInput := range transaction.Vin {
@@ -299,95 +443,11 @@ func updateTxSpenders(q *db.Queries, transaction *node.Transaction, blockHash By
 
 	if len(batchParams.Column1) > 0 {
 		if err := q.SetSpenderBatch(context.Background(), batchParams); err != nil {
-			return err
+			return 0, err
 		}
 	}
 
-	return nil
-}
-
-func StoreTransaction(q *db.Queries, transaction *node.Transaction, blockHash *Bytes, txIndex *int32) error {
-	transactionParams := db.InsertTransactionParams{}
-	copier.Copy(&transactionParams, &transaction)
-	transactionParams.BlockHash = *blockHash
-
-	var err error
-	if blockHash.String() != deadbeefString {
-		params := db.InsertTransactionParams{}
-		copier.Copy(&params, transaction)
-		params.BlockHash = *blockHash
-		params.Index = *txIndex
-		err = q.InsertTransaction(context.Background(), params)
-	} else {
-		params := db.InsertMempoolTransactionParams{}
-		copier.Copy(&params, transaction)
-		params.BlockHash = *blockHash
-		err = q.InsertMempoolTransaction(context.Background(), params)
-	}
-
-	if err != nil {
-		return err
-	}
-	inputs := make([]db.InsertBatchTxInputsParams, 0, len(transaction.Vin))
-
-	for input_index, txInput := range transaction.Vin {
-		var scriptSig Bytes
-		if txInput.ScriptSig != nil {
-			if err := scriptSig.UnmarshalText([]byte(txInput.ScriptSig.Hex)); err != nil {
-				return fmt.Errorf("failed to unmarshal scriptsig: %w", err)
-			}
-		}
-		inputParam := db.InsertBatchTxInputsParams{
-			BlockHash:    *blockHash,
-			Txid:         transactionParams.Txid,
-			Index:        int64(input_index),
-			HashPrevout:  txInput.HashPrevout,
-			IndexPrevout: int64(txInput.IndexPrevout),
-			Sequence:     int64(txInput.Sequence),
-			Coinbase:     txInput.Coinbase,
-			Txinwitness:  txInput.TxinWitness,
-			Scriptsig:    &scriptSig,
-		}
-		inputs = append(inputs, inputParam)
-
-	}
-
-	outputs := make([]db.InsertBatchTxOutputsParams, 0, len(transaction.Vout))
-	for output_index, txOutput := range transaction.Vout {
-		outputParam := db.InsertBatchTxOutputsParams{
-			BlockHash:    *blockHash,
-			Txid:         transactionParams.Txid,
-			Index:        int64(output_index),
-			Value:        int64(txOutput.Value()),
-			Scriptpubkey: *txOutput.Scriptpubkey(),
-		}
-		outputs = append(outputs, outputParam)
-	}
-
-	if len(inputs) > 0 {
-		if _, err := q.InsertBatchTxInputs(context.Background(), inputs); err != nil {
-			return fmt.Errorf("batch insert inputs: %w", err)
-		}
-	}
-
-	if len(outputs) > 0 {
-		if _, err := q.InsertBatchTxOutputs(context.Background(), outputs); err != nil {
-			return fmt.Errorf("batch insert outputs: %w", err)
-		}
-	}
-
-	if err := updateTxSpenders(q, transaction, *blockHash); err != nil {
-		return err
-
-	}
-
-	// for _, update := range spenderUpdates {
-	// 	if err := q.SetSpender(context.Background(), update); err != nil {
-	// 		return err
-	// 	}
-	// }
-
-	return nil
+	return len(batchParams.Column1), nil
 }
 
 // detects chain split (reorganization) and
@@ -429,28 +489,64 @@ func GetSyncedHead(pg *pgx.Conn, bc *node.BitcoinClient) (int32, *Bytes, error) 
 }
 
 func StoreBlock(ctx context.Context, pg *pgx.Conn, block *node.Block, sc *node.SpacesClient, activationBlock int32) error {
+	totalStart := time.Now()
+	defer func() {
+		log.Printf("Total block %d processing time: %s", block.Height, time.Since(totalStart))
+	}()
+
 	log.Printf("trying to store block #%d", block.Height)
+
 	tx, err := pg.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback(ctx)
 
-	tx, err = StoreBitcoinBlock(block, tx)
+	// Store Bitcoin block and collect timings
+	var timings *blockTimings
+	tx, err, timings = StoreBitcoinBlock(block, tx)
 	if err != nil {
 		return err
 	}
 
+	// Process Spaces data if applicable
 	if block.Height >= activationBlock {
+		start := time.Now()
 		spacesBlock, err := sc.GetBlockMeta(ctx, block.Hash.String())
 		if err != nil {
 			return err
 		}
+
 		tx, err = StoreSpacesTransactions(spacesBlock.Transactions, block.Hash, tx)
 		if err != nil {
 			return err
 		}
+		timings.spacesTime = time.Since(start)
+		timings.totalSpacesTxs = len(spacesBlock.Transactions)
 	}
 
+	// Report aggregated timings before commit
+	timings.report(block.Height)
+
 	return tx.Commit(ctx)
+}
+
+// Function signatures for remaining functions
+func StoreTransaction(q *db.Queries, transaction *node.Transaction, blockHash *Bytes, txIndex *int32) error {
+	// Base transaction
+	if err := storeTransactionBase(q, transaction, blockHash, txIndex); err != nil {
+		return err
+	}
+
+	// Inputs and outputs
+	if _, _, err := storeInputsOutputs(q, transaction, blockHash); err != nil {
+		return err
+	}
+
+	// Update spenders
+	if _, err := updateTxSpenders(q, transaction, *blockHash); err != nil {
+		return err
+	}
+
+	return nil
 }

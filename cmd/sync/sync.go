@@ -197,31 +197,36 @@ func syncMempool(pg *pgx.Conn, bc *node.BitcoinClient, sc *node.SpacesClient) er
 	ctx, cancel := context.WithTimeout(context.Background(), mempoolSyncTimeout*time.Minute)
 	defer cancel()
 
-	currentTxIds, err := bc.GetMempoolTxIds(ctx)
+	// Get current mempool txs grouped by dependencies
+	currentTxGroups, err := bc.GetMempoolTxIds(ctx)
 	if err != nil {
 		return err
 	}
-	log.Printf("found %d txs in current mempool", len(currentTxIds))
 
-	currentTxMap := make(map[string]struct{}, len(currentTxIds))
-	for _, txid := range currentTxIds {
-		currentTxMap[txid] = struct{}{}
+	// Create map for all current txs
+	currentTxMap := make(map[string]struct{})
+	for _, group := range currentTxGroups {
+		for _, txid := range group {
+			currentTxMap[txid] = struct{}{}
+		}
 	}
+	log.Printf("found %d txs in current mempool", len(currentTxMap))
 
+	// Get existing mempool txs from DB
 	q := db.New(pg)
 	existingTxidsBytes, err := q.GetMempoolTxids(ctx)
 	if err != nil {
 		return err
 	}
 
-	// Build maps in a single pass for both lookup and to-add calculation
+	// Build map of existing txs
 	existingTxMap := make(map[string]Bytes, len(existingTxidsBytes))
 	for _, txid := range existingTxidsBytes {
 		existingTxMap[txid.String()] = txid
 	}
 	log.Printf("found %d txs in database mempool", len(existingTxMap))
 
-	// Find transactions to delete using map lookup
+	// Find transactions to delete
 	var toDelete []Bytes
 	for txidStr, txidBytes := range existingTxMap {
 		if _, exists := currentTxMap[txidStr]; !exists {
@@ -229,14 +234,7 @@ func syncMempool(pg *pgx.Conn, bc *node.BitcoinClient, sc *node.SpacesClient) er
 		}
 	}
 
-	// Find transactions to add using map lookup
-	var toAdd []string
-	for txid := range currentTxMap {
-		if _, exists := existingTxMap[txid]; !exists {
-			toAdd = append(toAdd, txid)
-		}
-	}
-
+	// Delete old transactions
 	if len(toDelete) > 0 {
 		log.Printf("deleting %d old transactions", len(toDelete))
 		sqlTx, err := pg.BeginTx(ctx, pgx.TxOptions{})
@@ -262,29 +260,31 @@ func syncMempool(pg *pgx.Conn, bc *node.BitcoinClient, sc *node.SpacesClient) er
 		}
 	}
 
-	if len(toAdd) == 0 {
-		log.Printf("no new transactions to add")
-		return nil
-	}
-
 	var deadbeef Bytes
 	deadbeef.UnmarshalString(deadbeefString)
 
-	log.Printf("processing %d new transactions", len(toAdd))
-
-	for i := 0; i < len(toAdd); i += mempoolChunkSize {
+	// Process each group
+	for groupIdx, txGroup := range currentTxGroups {
 		select {
 		case <-ctx.Done():
-			log.Printf("mempool sync timed out after processing %d transactions", i)
+			log.Printf("mempool sync timed out after processing %d groups", groupIdx)
 			return ctx.Err()
 		default:
 		}
 
-		end := i + mempoolChunkSize
-		if end > len(toAdd) {
-			end = len(toAdd)
+		// Skip if all txs in group already exist
+		allExist := true
+		for _, txid := range txGroup {
+			if _, exists := existingTxMap[txid]; !exists {
+				allExist = false
+				break
+			}
 		}
-		log.Printf("processing chunk #%d of new mempool txs", i/mempoolChunkSize+1)
+		if allExist {
+			continue
+		}
+
+		// log.Printf("processing group %d/%d with %d transactions", groupIdx+1, len(currentTxGroups), len(txGroup))
 
 		sqlTx, err := pg.BeginTx(ctx, pgx.TxOptions{})
 		if err != nil {
@@ -295,9 +295,13 @@ func syncMempool(pg *pgx.Conn, bc *node.BitcoinClient, sc *node.SpacesClient) er
 
 		q = db.New(sqlTx)
 		var hexes []string
-		chunk := toAdd[i:end]
 
-		for _, txid := range chunk {
+		for _, txid := range txGroup {
+			// Skip if tx already exists
+			if _, exists := existingTxMap[txid]; exists {
+				continue
+			}
+
 			transaction, err := bc.GetTransaction(ctx, txid)
 			if err != nil {
 				continue
