@@ -197,21 +197,19 @@ func syncMempool(pg *pgx.Conn, bc *node.BitcoinClient, sc *node.SpacesClient) er
 	ctx, cancel := context.WithTimeout(context.Background(), mempoolSyncTimeout*time.Minute)
 	defer cancel()
 
-	// Get current mempool txs grouped by dependencies
 	currentGroups, err := bc.GetMempoolTxIds(ctx)
 	if err != nil {
 		return err
 	}
 
 	// Build current mempool map
-	currentTxMap := make(map[string]struct{})
+	nodeMempoolTxs := make(map[string]struct{})
 	for _, group := range currentGroups {
 		for _, txid := range group {
-			currentTxMap[txid] = struct{}{}
+			nodeMempoolTxs[txid] = struct{}{}
 		}
 	}
 
-	// Get existing mempool txs from DB
 	q := db.New(pg)
 	existingTxidsBytes, err := q.GetMempoolTxids(ctx)
 	if err != nil {
@@ -223,15 +221,14 @@ func syncMempool(pg *pgx.Conn, bc *node.BitcoinClient, sc *node.SpacesClient) er
 		existingTxMap[txid.String()] = txid
 	}
 
-	// Delete outdated transactions
-	if err := cleanupMempoolTxs(ctx, pg, currentTxMap, existingTxMap); err != nil {
+	if err := cleanupMempoolTxs(ctx, pg, nodeMempoolTxs, existingTxMap); err != nil {
 		return err
 	}
 
 	var deadbeef Bytes
 	deadbeef.UnmarshalString(deadbeefString)
 
-	// Process transaction groups
+	sqlTx, err := pg.BeginTx(ctx, pgx.TxOptions{})
 	for _, txGroup := range currentGroups {
 		select {
 		case <-ctx.Done():
@@ -239,18 +236,24 @@ func syncMempool(pg *pgx.Conn, bc *node.BitcoinClient, sc *node.SpacesClient) er
 		default:
 		}
 
-		if err := processTxGroup(ctx, pg, bc, sc, txGroup, existingTxMap, deadbeef); err != nil {
+		if err != nil {
 			return err
 		}
-	}
+		defer sqlTx.Rollback(ctx)
 
-	return nil
+		if err := processTxGroup(ctx, sqlTx, bc, sc, txGroup, existingTxMap, deadbeef); err != nil {
+			return err
+		}
+
+	}
+	return sqlTx.Commit(ctx)
+
 }
 
-func cleanupMempoolTxs(ctx context.Context, pg *pgx.Conn, currentTxMap map[string]struct{}, existingTxMap map[string]Bytes) error {
+func cleanupMempoolTxs(ctx context.Context, pg *pgx.Conn, nodeMempoolTxs map[string]struct{}, existingTxMap map[string]Bytes) error {
 	var toDelete []Bytes
 	for txidStr, txidBytes := range existingTxMap {
-		if _, exists := currentTxMap[txidStr]; !exists {
+		if _, exists := nodeMempoolTxs[txidStr]; !exists {
 			toDelete = append(toDelete, txidBytes)
 		}
 	}
@@ -279,30 +282,24 @@ func cleanupMempoolTxs(ctx context.Context, pg *pgx.Conn, currentTxMap map[strin
 	return nil
 }
 
-func processTxGroup(ctx context.Context, pg *pgx.Conn, bc *node.BitcoinClient, sc *node.SpacesClient,
-	txGroup []string, existingTxMap map[string]Bytes, deadbeef Bytes) error {
-
-	sqlTx, err := pg.BeginTx(ctx, pgx.TxOptions{})
-	if err != nil {
-		return err
-	}
-	defer sqlTx.Rollback(ctx)
-
+func processTxGroup(ctx context.Context, sqlTx pgx.Tx, bc *node.BitcoinClient, sc *node.SpacesClient, txGroup []string, existingTxMap map[string]Bytes, deadbeef Bytes) error {
 	q := db.New(sqlTx)
-	var hexes []string
 
-	// Get all txs for spaces node
-	for _, txid := range txGroup {
+	var hexes []string
+	for i, txid := range txGroup {
 		tx, err := bc.GetTransaction(ctx, txid)
 		if err != nil {
+			log.Print("got error in the bitcoin node ", err)
 			continue
 		}
 		hexes = append(hexes, tx.Hex.String())
 
-		// Store only if not in DB
-		if _, exists := existingTxMap[txid]; !exists {
-			if err := store.StoreTransaction(q, tx, &deadbeef, nil); err != nil {
-				return err
+		// Store only the last transaction (dependent one)
+		if i == len(txGroup)-1 {
+			if _, exists := existingTxMap[txid]; !exists {
+				if err := store.StoreTransaction(q, tx, &deadbeef, nil); err != nil {
+					return err
+				}
 			}
 		}
 	}
@@ -312,17 +309,19 @@ func processTxGroup(ctx context.Context, pg *pgx.Conn, bc *node.BitcoinClient, s
 		if err != nil {
 			return err
 		}
-		for _, metaTx := range metaTxs {
-			if metaTx != nil {
-				txid := metaTx.TxID.String()
-				if _, exists := existingTxMap[txid]; !exists {
-					if sqlTx, err = store.StoreSpacesTransaction(*metaTx, deadbeef, sqlTx); err != nil {
-						return err
-					}
+
+		// Only process the last metaTx since it's the dependent one
+		if len(metaTxs) > 0 && metaTxs[len(metaTxs)-1] != nil {
+			lastMetaTx := metaTxs[len(metaTxs)-1]
+			txid := lastMetaTx.TxID.String()
+			if _, exists := existingTxMap[txid]; !exists {
+
+				if sqlTx, err = store.StoreSpacesTransaction(*lastMetaTx, deadbeef, sqlTx); err != nil {
+					return err
 				}
 			}
 		}
 	}
+	return nil
 
-	return sqlTx.Commit(ctx)
 }

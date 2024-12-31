@@ -105,110 +105,17 @@ func (client *BitcoinClient) GetMempoolTxIds(ctx context.Context) ([][]string, e
 		return nil, err
 	}
 
-	// Pre-allocate maps with expected size
 	size := len(response)
-	processed := make(map[string]struct{}, size)
-	dependedBy := make(map[string][]string, size)
+	orderedGroups := make([][]string, 0, size)
 
-	// Single pass to build dependency index
-	// Only build dependedBy as it's the critical path we need
-	for txid, info := range response {
-		for _, dep := range info.Depends {
-			dependedBy[dep] = append(dependedBy[dep], txid)
-		}
-	}
-
-	// Pre-allocate result slice
-	var orderedGroups [][]string
-	orderedGroups = make([][]string, 0, size/20) // Estimate avg group size of 20
-
-	// Find independent transactions in a single pass with pre-allocated slice
-	independentTxs := make([]string, 0, size/4) // Estimate 25% are independent
 	for txid, info := range response {
 		if len(info.Depends) == 0 {
-			independentTxs = append(independentTxs, txid)
-		}
-	}
-
-	// Use insertion sort for small batches instead of full sort
-	// This is faster for small groups of transactions
-	insertionSortByTime := func(txids []string) {
-		for i := 1; i < len(txids); i++ {
-			key := txids[i]
-			keyTime := response[key].Time
-			j := i - 1
-			for j >= 0 && response[txids[j]].Time > keyTime {
-				txids[j+1] = txids[j]
-				j--
-			}
-			txids[j+1] = key
-		}
-	}
-
-	// Process chains with minimal allocations
-	chain := make([]string, 0, 100) // Pre-allocate typical chain size
-	var processChain func(txid string)
-	processChain = func(txid string) {
-		if _, ok := processed[txid]; ok {
-			return
-		}
-
-		processed[txid] = struct{}{}
-		chain = append(chain, txid)
-
-		// Get dependents and sort only if more than one
-		dependents := dependedBy[txid]
-		if len(dependents) > 1 {
-			insertionSortByTime(dependents)
-		}
-
-		// Process each dependent
-		for _, dep := range dependents {
-			if _, ok := processed[dep]; ok {
-				continue
-			}
-
-			// Quick check if all dependencies are processed
-			canProcess := true
-			for _, parentDep := range response[dep].Depends {
-				if _, ok := processed[parentDep]; !ok {
-					canProcess = false
-					break
-				}
-			}
-
-			if canProcess {
-				processChain(dep)
-			}
-		}
-	}
-
-	// Process independent transactions
-	if len(independentTxs) > 1 {
-		insertionSortByTime(independentTxs)
-	}
-
-	for _, txid := range independentTxs {
-		chain = chain[:0] // Reset chain slice without reallocating
-		processChain(txid)
-		if len(chain) > 0 {
-			// Create new slice for this chain
-			newChain := make([]string, len(chain))
-			copy(newChain, chain)
-			orderedGroups = append(orderedGroups, newChain)
-		}
-	}
-
-	// Handle remaining transactions
-	for txid := range response {
-		if _, ok := processed[txid]; !ok {
-			chain = chain[:0] // Reset chain slice without reallocating
-			processChain(txid)
-			if len(chain) > 0 {
-				newChain := make([]string, len(chain))
-				copy(newChain, chain)
-				orderedGroups = append(orderedGroups, newChain)
-			}
+			orderedGroups = append(orderedGroups, []string{txid})
+		} else {
+			group := make([]string, 0, len(info.Depends)+1)
+			group = append(group, info.Depends...)
+			group = append(group, txid)
+			orderedGroups = append(orderedGroups, group)
 		}
 	}
 

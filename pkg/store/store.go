@@ -315,7 +315,7 @@ func StoreBitcoinBlock(block *node.Block, tx pgx.Tx) (pgx.Tx, error, *blockTimin
 		for tx_index, transaction := range block.Transactions {
 			ind := int32(tx_index)
 			if tx_index%50 == 0 {
-				log.Print("tx index ", tx_index, " tx_hash ", transaction.Txid.String())
+				log.Print("current batch insert of tx # ", tx_index, " tx_hash ", transaction.Txid.String())
 			}
 
 			// Base transaction insert
@@ -531,19 +531,15 @@ func StoreBlock(ctx context.Context, pg *pgx.Conn, block *node.Block, sc *node.S
 	return tx.Commit(ctx)
 }
 
-// Function signatures for remaining functions
 func StoreTransaction(q *db.Queries, transaction *node.Transaction, blockHash *Bytes, txIndex *int32) error {
-	// Base transaction
 	if err := storeTransactionBase(q, transaction, blockHash, txIndex); err != nil {
 		return err
 	}
 
-	// Inputs and outputs
 	if _, _, err := storeInputsOutputs(q, transaction, blockHash); err != nil {
 		return err
 	}
 
-	// Update spenders
 	if _, err := updateTxSpenders(q, transaction, *blockHash); err != nil {
 		return err
 	}

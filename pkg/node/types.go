@@ -140,8 +140,8 @@ type MetaTransaction struct {
 
 type ScriptError struct {
 	Type   string `json:"type"`
-	Name   string `json:"name"`
-	Reason string `json:"reason"`
+	Name   string `json:"name,omitempty"`
+	Reason string `json:"reason,omitempty"`
 }
 
 type CreateMeta struct {
