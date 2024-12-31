@@ -212,6 +212,7 @@ func syncMempool(pg *pgx.Conn, bc *node.BitcoinClient, sc *node.SpacesClient) er
 
 	q := db.New(pg)
 	existingTxidsBytes, err := q.GetMempoolTxids(ctx)
+	log.Printf("found %d txs in db's mempool", len(existingTxidsBytes))
 	if err != nil {
 		return err
 	}
@@ -258,6 +259,7 @@ func cleanupMempoolTxs(ctx context.Context, pg *pgx.Conn, nodeMempoolTxs map[str
 		}
 	}
 
+	log.Printf("deleting %d txs from db's mempool", len(toDelete))
 	if len(toDelete) > 0 {
 		sqlTx, err := pg.BeginTx(ctx, pgx.TxOptions{})
 		if err != nil {

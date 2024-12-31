@@ -106,6 +106,7 @@ func (client *BitcoinClient) GetMempoolTxIds(ctx context.Context) ([][]string, e
 	}
 
 	size := len(response)
+	log.Printf("found %d txs in node's mempool", size)
 	orderedGroups := make([][]string, 0, size)
 
 	for txid, info := range response {
