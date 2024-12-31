@@ -24,7 +24,7 @@ func (q *Queries) DeleteMempoolTransactionByTxid(ctx context.Context, txid types
 
 const deleteMempoolTransactions = `-- name: DeleteMempoolTransactions :exec
 DELETE FROM transactions
-WHERE block_hash = '\xdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef'
+WHERE block_hash = '\xdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef' and index <0
 `
 
 func (q *Queries) DeleteMempoolTransactions(ctx context.Context) error {

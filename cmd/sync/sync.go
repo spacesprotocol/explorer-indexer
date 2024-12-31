@@ -24,7 +24,7 @@ var fastSyncBlockHeight = getFastSyncBlockHeight()
 var mempoolChunkSize = getMempoolChunkSize()
 
 const deadbeefString = "deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef"
-const mempoolSyncTimeout = 1 //in minutes
+const mempoolSyncTimeout = 5 //in minutes
 
 func getMempoolChunkSize() int {
 	if height := os.Getenv("MEMPOOL_CHUNK_SIZE"); height != "" {
@@ -230,7 +230,11 @@ func syncMempool(pg *pgx.Conn, bc *node.BitcoinClient, sc *node.SpacesClient) er
 	deadbeef.UnmarshalString(deadbeefString)
 
 	sqlTx, err := pg.BeginTx(ctx, pgx.TxOptions{})
-	for _, txGroup := range currentGroups {
+	log.Printf("there are %d mempool tx groups", len(currentGroups))
+	for groupIndex, txGroup := range currentGroups {
+		if groupIndex%50 == 0 {
+			log.Printf("processing group #%d", groupIndex)
+		}
 		select {
 		case <-ctx.Done():
 			return ctx.Err()

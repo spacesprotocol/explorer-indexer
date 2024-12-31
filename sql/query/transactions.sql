@@ -44,7 +44,7 @@ LIMIT $1 OFFSET $2;
 
 -- name: DeleteMempoolTransactions :exec
 DELETE FROM transactions
-WHERE block_hash = '\xdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef';
+WHERE block_hash = '\xdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef' and index <0;
 
 -- name: DeleteMempoolTransactionByTxid :exec
 DELETE FROM transactions
