@@ -132,8 +132,13 @@ func syncGapBlocks(pg *pgx.Conn, bc *node.BitcoinClient, sc *node.SpacesClient) 
 				return err
 			}
 
-			if sqlTx, err = store.UpdateBlockSpender(block, sqlTx); err != nil {
-				return err
+			log.Printf("updating spenders from the block %d", block.Height)
+			q := db.New(sqlTx)
+			for _, transaction := range block.Transactions {
+				_, err := store.UpdateTxSpenders(q, &transaction, block.Hash)
+				if err != nil {
+					return err
+				}
 			}
 			sqlTx.Commit(ctx)
 		}

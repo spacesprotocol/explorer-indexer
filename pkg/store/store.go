@@ -343,7 +343,7 @@ func StoreBitcoinBlock(block *node.Block, tx pgx.Tx) (pgx.Tx, error, *blockTimin
 
 			// Update spenders
 			start = time.Now()
-			spendCount, err := updateTxSpenders(q, &transaction, blockParams.Hash)
+			spendCount, err := UpdateTxSpenders(q, &transaction, blockParams.Hash)
 			timings.spendersTime += time.Since(start)
 			if err != nil {
 				return tx, err, timings
@@ -422,7 +422,7 @@ func storeInputsOutputs(q *db.Queries, transaction *node.Transaction, blockHash 
 	return len(inputs), len(outputs), nil
 }
 
-func updateTxSpenders(q *db.Queries, transaction *node.Transaction, blockHash Bytes) (int, error) {
+func UpdateTxSpenders(q *db.Queries, transaction *node.Transaction, blockHash Bytes) (int, error) {
 	batchParams := db.SetSpenderBatchParams{
 		Column1: make([]Bytes, 0, len(transaction.Vin)),
 		Column2: make([]int64, 0, len(transaction.Vin)),
@@ -540,7 +540,7 @@ func StoreTransaction(q *db.Queries, transaction *node.Transaction, blockHash *B
 		return err
 	}
 
-	if _, err := updateTxSpenders(q, transaction, *blockHash); err != nil {
+	if _, err := UpdateTxSpenders(q, transaction, *blockHash); err != nil {
 		return err
 	}
 
