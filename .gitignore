@@ -4,4 +4,4 @@ regtest-data/
 dump.sql
 .env
 backfill
-sync
+/sync
