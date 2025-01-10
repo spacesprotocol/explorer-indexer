@@ -24,7 +24,7 @@ var fastSyncBlockHeight = getFastSyncBlockHeight()
 var mempoolChunkSize = getMempoolChunkSize()
 
 const deadbeefString = "deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef"
-const mempoolSyncTimeout = 60 //in seconds
+const mempoolSyncTimeout = 10 //in seconds
 
 func getMempoolChunkSize() int {
 	if height := os.Getenv("MEMPOOL_CHUNK_SIZE"); height != "" {

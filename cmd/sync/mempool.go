@@ -63,12 +63,6 @@ func syncMempool(pg *pgx.Conn, bc *node.BitcoinClient, sc *node.SpacesClient) er
 	var deadbeef Bytes
 	deadbeef.UnmarshalString(deadbeefString)
 
-	sqlTx, err := pg.BeginTx(ctx, pgx.TxOptions{})
-	if err != nil {
-		return err
-	}
-	defer sqlTx.Rollback(ctx)
-
 	// Process only the filtered groups
 	for groupIndex, txGroup := range groupsToProcess {
 		if groupIndex%50 == 0 {
@@ -80,13 +74,23 @@ func syncMempool(pg *pgx.Conn, bc *node.BitcoinClient, sc *node.SpacesClient) er
 			return ctx.Err()
 		default:
 		}
+		sqlTx, err := pg.BeginTx(ctx, pgx.TxOptions{})
+		if err != nil {
+			return err
+		}
+		defer sqlTx.Rollback(ctx)
 
 		if err := processTxGroup(ctx, sqlTx, bc, sc, txGroup, deadbeef); err != nil {
 			return err
 		}
+
+		if err := sqlTx.Commit(ctx); err != nil {
+			return err
+		}
 	}
 
-	return sqlTx.Commit(ctx)
+	return nil
+
 }
 
 func cleanupMempoolTxs(ctx context.Context, pg *pgx.Conn, nodeMempoolTxs map[string]struct{}, existingTxMap map[string]Bytes) error {
@@ -105,9 +109,9 @@ func cleanupMempoolTxs(ctx context.Context, pg *pgx.Conn, nodeMempoolTxs map[str
 		}
 		defer sqlTx.Rollback(ctx)
 
-		qtx := db.New(sqlTx)
+		q := db.New(sqlTx)
 		for _, txid := range toDelete {
-			if err := qtx.DeleteMempoolTransactionByTxid(ctx, txid); err != nil {
+			if err := q.DeleteMempoolTransactionByTxid(ctx, txid); err != nil {
 				return err
 			}
 		}
