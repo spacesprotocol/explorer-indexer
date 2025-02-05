@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"math"
 
-	. "github.com/spacesprotocol/explorer-backend/pkg/types"
+	. "github.com/spacesprotocol/explorer-indexer/pkg/types"
 )
 
 // from the blockchain node
@@ -166,6 +166,13 @@ type OutputMeta struct {
 	Value        int      `json:"value"`
 	Name         string   `json:"name,omitempty"`
 	ScriptPubKey Bytes    `json:"script_pubkey"`
+}
+
+type Listing struct {
+	Space     string `json:"space"`
+	Price     int    `json:"price"`
+	Seller    string `json:"seller"`
+	Signature string `json:"signature"`
 }
 
 func (vout *Vout) Scriptpubkey() *Bytes {

@@ -12,9 +12,9 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 
 	"github.com/jinzhu/copier"
-	"github.com/spacesprotocol/explorer-backend/pkg/db"
-	"github.com/spacesprotocol/explorer-backend/pkg/node"
-	. "github.com/spacesprotocol/explorer-backend/pkg/types"
+	"github.com/spacesprotocol/explorer-indexer/pkg/db"
+	"github.com/spacesprotocol/explorer-indexer/pkg/node"
+	. "github.com/spacesprotocol/explorer-indexer/pkg/types"
 )
 
 const deadbeefString = "deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef"

@@ -8,9 +8,9 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
-	"github.com/spacesprotocol/explorer-backend/pkg/db"
-	"github.com/spacesprotocol/explorer-backend/pkg/node"
-	"github.com/spacesprotocol/explorer-backend/pkg/store"
+	"github.com/spacesprotocol/explorer-indexer/pkg/db"
+	"github.com/spacesprotocol/explorer-indexer/pkg/node"
+	"github.com/spacesprotocol/explorer-indexer/pkg/store"
 
 	_ "github.com/lib/pq"
 )
@@ -48,6 +48,7 @@ func main() {
 	if err != nil {
 		log.Fatalln(err)
 	}
+	defer pg.Close(context.Background())
 
 	updateInterval, err := strconv.Atoi(os.Getenv("UPDATE_DB_INTERVAL"))
 	if err != nil {

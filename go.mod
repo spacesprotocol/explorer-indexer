@@ -1,4 +1,4 @@
-module github.com/spacesprotocol/explorer-backend
+module github.com/spacesprotocol/explorer-indexer
 
 go 1.21.5
 

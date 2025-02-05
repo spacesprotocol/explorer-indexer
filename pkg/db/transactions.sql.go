@@ -8,7 +8,7 @@ package db
 import (
 	"context"
 
-	"github.com/spacesprotocol/explorer-backend/pkg/types"
+	"github.com/spacesprotocol/explorer-indexer/pkg/types"
 )
 
 const deleteMempoolTransactionByTxid = `-- name: DeleteMempoolTransactionByTxid :exec

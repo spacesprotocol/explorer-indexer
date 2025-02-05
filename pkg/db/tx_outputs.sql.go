@@ -9,7 +9,7 @@ import (
 	"context"
 
 	"github.com/jackc/pgx/v5/pgtype"
-	"github.com/spacesprotocol/explorer-backend/pkg/types"
+	"github.com/spacesprotocol/explorer-indexer/pkg/types"
 )
 
 const deleteMempoolTxOutputs = `-- name: DeleteMempoolTxOutputs :exec

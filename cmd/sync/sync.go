@@ -11,12 +11,12 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
-	"github.com/spacesprotocol/explorer-backend/pkg/db"
-	"github.com/spacesprotocol/explorer-backend/pkg/node"
-	"github.com/spacesprotocol/explorer-backend/pkg/store"
+	"github.com/spacesprotocol/explorer-indexer/pkg/db"
+	"github.com/spacesprotocol/explorer-indexer/pkg/node"
+	"github.com/spacesprotocol/explorer-indexer/pkg/store"
 
 	_ "github.com/lib/pq"
-	. "github.com/spacesprotocol/explorer-backend/pkg/types"
+	. "github.com/spacesprotocol/explorer-indexer/pkg/types"
 )
 
 var activationBlock = getActivationBlock()
@@ -24,7 +24,7 @@ var fastSyncBlockHeight = getFastSyncBlockHeight()
 var mempoolChunkSize = getMempoolChunkSize()
 
 const deadbeefString = "deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef"
-const mempoolSyncTimeout = 10 //in seconds
+const mempoolSyncTimeout = 100 //in seconds
 
 func getMempoolChunkSize() int {
 	if height := os.Getenv("MEMPOOL_CHUNK_SIZE"); height != "" {

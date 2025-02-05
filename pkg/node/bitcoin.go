@@ -4,7 +4,7 @@ import (
 	"context"
 	"log"
 
-	. "github.com/spacesprotocol/explorer-backend/pkg/types"
+	. "github.com/spacesprotocol/explorer-indexer/pkg/types"
 )
 
 var mempoolChunkSize = 200
@@ -118,6 +118,10 @@ func (client *BitcoinClient) GetMempoolTxIds(ctx context.Context) ([][]string, e
 			group = append(group, txid)
 			orderedGroups = append(orderedGroups, group)
 		}
+	}
+	for _, a := range orderedGroups {
+		log.Print(a)
+
 	}
 
 	return orderedGroups, nil

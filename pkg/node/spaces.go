@@ -57,3 +57,12 @@ func (client *SpacesClient) CheckPackage(ctx context.Context, txHexes []string) 
 	}
 	return metaTxs, err
 }
+
+func (client *SpacesClient) VerifyListing(ctx context.Context, listing Listing) error {
+	qwer := new(struct{})
+	err := client.Rpc(ctx, "verifylisting", []interface{}{listing}, &qwer)
+	if err != nil {
+		return err
+	}
+	return nil
+}
