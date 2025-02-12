@@ -126,6 +126,8 @@ type Covenant struct {
 
 type SpacesBlock struct {
 	Transactions []MetaTransaction `json:"tx_meta"`
+	Height       int               `json:"height"`
+	Hash         Bytes             `json:"hash"`
 }
 
 type MetaTransaction struct {
