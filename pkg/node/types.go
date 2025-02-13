@@ -3,6 +3,7 @@ package node
 import (
 	"encoding/json"
 	"math"
+	"strings"
 
 	. "github.com/spacesprotocol/explorer-indexer/pkg/types"
 )
@@ -175,6 +176,14 @@ type Listing struct {
 	Price     int    `json:"price"`
 	Seller    string `json:"seller"`
 	Signature string `json:"signature"`
+}
+
+func (l *Listing) NormalizeSpace() {
+	space := strings.ToLower(l.Space)
+	if !strings.HasPrefix(space, "@") {
+		space = "@" + space
+	}
+	l.Space = space
 }
 
 func (vout *Vout) Scriptpubkey() *Bytes {
