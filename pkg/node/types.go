@@ -189,3 +189,13 @@ func (l *Listing) NormalizeSpace() {
 func (vout *Vout) Scriptpubkey() *Bytes {
 	return &vout.NodeScriptPubKey.Hex
 }
+
+type RootBlockPair struct {
+	Root  string    `json:"root"`
+	Block BlockInfo `json:"block"`
+}
+
+type BlockInfo struct {
+	Hash   string `json:"hash"`
+	Height int    `json:"height"`
+}

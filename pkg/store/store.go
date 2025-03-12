@@ -82,10 +82,12 @@ func StoreSpacesTransaction(tx node.MetaTransaction, blockHash Bytes, sqlTx pgx.
 	q := db.New(sqlTx)
 	for _, create := range tx.Creates {
 		vmet := db.InsertVMetaOutParams{
-			BlockHash:    blockHash,
-			Txid:         tx.TxID,
-			Value:        pgtype.Int8{Int64: int64(create.Value), Valid: true},
-			Scriptpubkey: &create.ScriptPubKey,
+			BlockHash:     blockHash,
+			Txid:          tx.TxID,
+			Value:         pgtype.Int8{Int64: int64(create.Value), Valid: true},
+			Scriptpubkey:  &create.ScriptPubKey,
+			OutpointTxid:  &tx.TxID,
+			OutpointIndex: pgtype.Int8{Int64: int64(create.N), Valid: true},
 		}
 		if create.Name != "" {
 			if create.Name[0] == '@' {
@@ -160,10 +162,12 @@ func StoreSpacesTransaction(tx node.MetaTransaction, blockHash Bytes, sqlTx pgx.
 
 	for _, update := range tx.Updates {
 		vmet := db.InsertVMetaOutParams{
-			BlockHash:    blockHash,
-			Txid:         tx.TxID,
-			Value:        pgtype.Int8{Int64: int64(update.Output.Value), Valid: true},
-			Scriptpubkey: &update.Output.ScriptPubKey,
+			BlockHash:     blockHash,
+			Txid:          tx.TxID,
+			Value:         pgtype.Int8{Int64: int64(update.Output.Value), Valid: true},
+			Scriptpubkey:  &update.Output.ScriptPubKey,
+			OutpointTxid:  &update.Output.TxID,
+			OutpointIndex: pgtype.Int8{Int64: int64(update.Output.N), Valid: true},
 		}
 
 		if update.Priority != 0 {
@@ -504,14 +508,14 @@ func StoreBlock(ctx context.Context, pg *pgx.Conn, block *node.Block, sc *node.S
 
 	// Store Bitcoin block and collect timings
 	var timings *blockTimings
-	tx, err, timings = StoreBitcoinBlock(block, tx)
+	// tx, err, timings = StoreBitcoinBlock(block, tx)
 	if err != nil {
 		return err
 	}
 
 	// Process Spaces data if applicable
 	if block.Height >= activationBlock {
-		start := time.Now()
+		// start := time.Now()
 		spacesBlock, err := sc.GetBlockMeta(ctx, block.Hash.String())
 		if err != nil {
 			return err
@@ -521,8 +525,8 @@ func StoreBlock(ctx context.Context, pg *pgx.Conn, block *node.Block, sc *node.S
 		if err != nil {
 			return err
 		}
-		timings.spacesTime = time.Since(start)
-		timings.totalSpacesTxs = len(spacesBlock.Transactions)
+		// timings.spacesTime = time.Since(start)
+		// timings.totalSpacesTxs = len(spacesBlock.Transactions)
 	}
 
 	// Report aggregated timings before commit
