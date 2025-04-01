@@ -22,7 +22,7 @@ func (q *Queries) DeleteBlocksAfterHeight(ctx context.Context, height int32) err
 }
 
 const getBlockByHash = `-- name: GetBlockByHash :one
-SELECT blocks.hash, blocks.size, blocks.stripped_size, blocks.weight, blocks.height, blocks.version, blocks.hash_merkle_root, blocks.time, blocks.median_time, blocks.nonce, blocks.bits, blocks.difficulty, blocks.chainwork, blocks.orphan, (
+SELECT blocks.hash, blocks.size, blocks.stripped_size, blocks.weight, blocks.height, blocks.version, blocks.hash_merkle_root, blocks.time, blocks.median_time, blocks.nonce, blocks.bits, blocks.difficulty, blocks.chainwork, blocks.orphan, blocks.root_anchor, (
   SELECT COUNT(*) FROM transactions WHERE blocks.hash = transactions.block_hash
 )::integer AS txs_count
 FROM blocks
@@ -44,6 +44,7 @@ type GetBlockByHashRow struct {
 	Difficulty     float64
 	Chainwork      types.Bytes
 	Orphan         bool
+	RootAnchor     *types.Bytes
 	TxsCount       int32
 }
 
@@ -65,13 +66,14 @@ func (q *Queries) GetBlockByHash(ctx context.Context, hash types.Bytes) (GetBloc
 		&i.Difficulty,
 		&i.Chainwork,
 		&i.Orphan,
+		&i.RootAnchor,
 		&i.TxsCount,
 	)
 	return i, err
 }
 
 const getBlockByHeight = `-- name: GetBlockByHeight :one
-SELECT blocks.hash, blocks.size, blocks.stripped_size, blocks.weight, blocks.height, blocks.version, blocks.hash_merkle_root, blocks.time, blocks.median_time, blocks.nonce, blocks.bits, blocks.difficulty, blocks.chainwork, blocks.orphan, (
+SELECT blocks.hash, blocks.size, blocks.stripped_size, blocks.weight, blocks.height, blocks.version, blocks.hash_merkle_root, blocks.time, blocks.median_time, blocks.nonce, blocks.bits, blocks.difficulty, blocks.chainwork, blocks.orphan, blocks.root_anchor, (
   SELECT COUNT(*) FROM transactions WHERE blocks.hash = transactions.block_hash
 )::integer AS txs_count
 FROM blocks
@@ -93,6 +95,7 @@ type GetBlockByHeightRow struct {
 	Difficulty     float64
 	Chainwork      types.Bytes
 	Orphan         bool
+	RootAnchor     *types.Bytes
 	TxsCount       int32
 }
 
@@ -114,6 +117,7 @@ func (q *Queries) GetBlockByHeight(ctx context.Context, height int32) (GetBlockB
 		&i.Difficulty,
 		&i.Chainwork,
 		&i.Orphan,
+		&i.RootAnchor,
 		&i.TxsCount,
 	)
 	return i, err
@@ -133,7 +137,7 @@ func (q *Queries) GetBlockHashByHeight(ctx context.Context, height int32) (types
 }
 
 const getBlocks = `-- name: GetBlocks :many
-SELECT blocks.hash, blocks.size, blocks.stripped_size, blocks.weight, blocks.height, blocks.version, blocks.hash_merkle_root, blocks.time, blocks.median_time, blocks.nonce, blocks.bits, blocks.difficulty, blocks.chainwork, blocks.orphan, (
+SELECT blocks.hash, blocks.size, blocks.stripped_size, blocks.weight, blocks.height, blocks.version, blocks.hash_merkle_root, blocks.time, blocks.median_time, blocks.nonce, blocks.bits, blocks.difficulty, blocks.chainwork, blocks.orphan, blocks.root_anchor, (
   SELECT COUNT(*) FROM transactions WHERE blocks.hash = transactions.block_hash
 )::integer AS txs_count
 FROM blocks
@@ -161,6 +165,7 @@ type GetBlocksRow struct {
 	Difficulty     float64
 	Chainwork      types.Bytes
 	Orphan         bool
+	RootAnchor     *types.Bytes
 	TxsCount       int32
 }
 
@@ -188,6 +193,7 @@ func (q *Queries) GetBlocks(ctx context.Context, arg GetBlocksParams) ([]GetBloc
 			&i.Difficulty,
 			&i.Chainwork,
 			&i.Orphan,
+			&i.RootAnchor,
 			&i.TxsCount,
 		); err != nil {
 			return nil, err
@@ -227,6 +233,20 @@ UPDATE blocks SET orphan = true WHERE height > $1
 
 func (q *Queries) SetOrphanAfterHeight(ctx context.Context, height int32) error {
 	_, err := q.db.Exec(ctx, setOrphanAfterHeight, height)
+	return err
+}
+
+const updateRootAnchor = `-- name: UpdateRootAnchor :exec
+UPDATE blocks set root_anchor = ($1) where hash = ($2)
+`
+
+type UpdateRootAnchorParams struct {
+	RootAnchor *types.Bytes
+	Hash       types.Bytes
+}
+
+func (q *Queries) UpdateRootAnchor(ctx context.Context, arg UpdateRootAnchorParams) error {
+	_, err := q.db.Exec(ctx, updateRootAnchor, arg.RootAnchor, arg.Hash)
 	return err
 }
 

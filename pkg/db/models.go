@@ -73,6 +73,7 @@ type Block struct {
 	Difficulty     float64
 	Chainwork      types.Bytes
 	Orphan         bool
+	RootAnchor     *types.Bytes
 }
 
 type Rollout struct {

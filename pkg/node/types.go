@@ -190,12 +190,12 @@ func (vout *Vout) Scriptpubkey() *Bytes {
 	return &vout.NodeScriptPubKey.Hex
 }
 
-type RootBlockPair struct {
-	Root  string    `json:"root"`
+type RootAnchor struct {
+	Root  Bytes     `json:"root"`
 	Block BlockInfo `json:"block"`
 }
 
 type BlockInfo struct {
-	Hash   string `json:"hash"`
-	Height int    `json:"height"`
+	Hash   Bytes `json:"hash"`
+	Height int   `json:"height"`
 }

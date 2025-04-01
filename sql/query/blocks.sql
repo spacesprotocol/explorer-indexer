@@ -24,6 +24,11 @@ SET
 RETURNING (xmax = 0)::boolean AS was_inserted;
 
 
+-- name: UpdateRootAnchor :exec
+UPDATE blocks set root_anchor = ($1) where hash = ($2);
+
+
+
 -- name: GetBlocks :many
 SELECT blocks.*, (
   SELECT COUNT(*) FROM transactions WHERE blocks.hash = transactions.block_hash

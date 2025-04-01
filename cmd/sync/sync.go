@@ -99,6 +99,36 @@ func main() {
 	}
 }
 
+func syncRootAnchors(ctx context.Context, pg *pgx.Conn, sc *node.SpacesClient) error {
+	sqlTx, err := pg.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		return err
+	}
+
+	defer sqlTx.Rollback(ctx)
+	q := db.New(sqlTx)
+	result, err := sc.GetRootAnchors(ctx)
+	if err != nil {
+		return err
+	}
+
+	params := db.UpdateRootAnchorParams{}
+	for _, rootAnchor := range result {
+		params.Hash = rootAnchor.Block.Hash
+		params.RootAnchor = &rootAnchor.Root
+
+		if err := q.UpdateRootAnchor(ctx, params); err != nil {
+			log.Printf("error updating root anchor %d: %v", rootAnchor, err)
+			return err
+		}
+	}
+	if err = sqlTx.Commit(ctx); err != nil {
+		return err
+	}
+	return nil
+
+}
+
 func syncRollouts(ctx context.Context, pg *pgx.Conn, sc *node.SpacesClient) error {
 	sqlTx, err := pg.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
@@ -168,6 +198,11 @@ func syncBlocks(pg *pgx.Conn, bc *node.BitcoinClient, sc *node.SpacesClient) err
 
 	if block.Height >= activationBlock {
 		if err := syncRollouts(ctx, pg, sc); err != nil {
+			log.Println(err)
+			return err
+		}
+
+		if err := syncRootAnchors(ctx, pg, sc); err != nil {
 			log.Println(err)
 			return err
 		}

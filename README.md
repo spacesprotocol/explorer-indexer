@@ -43,12 +43,16 @@ Supports two sync modes:
   - Mainnet: Block 871222
   - Testnet4: Block 50000
 
-### Backfill Service
+#### Backfill Service
 Used to populate historical bitcoin blocks when using fast sync mode:
 ```bash
 ./backfill
 ```
 Note: backfill only stores bitcoin data, not spaces protocol data.
+
+#### Populate service 
+
+Populates only spaces-related data to the db. Can be thought as fast 'rescan'.
 
 ### Configuration
 Configuration is handled through environment variables. Copy and modify the example configuration:

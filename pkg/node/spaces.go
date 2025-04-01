@@ -67,11 +67,11 @@ func (client *SpacesClient) VerifyListing(ctx context.Context, listing Listing) 
 	return nil
 }
 
-func (client *SpacesClient) GetRootAnchor(ctx context.Context, listing Listing) error {
-	rootAnchor := make([]*RootBlockPair, 0)
-	err := client.Rpc(ctx, "getrootanchor", []interface{}{listing}, &rootAnchor)
+func (client *SpacesClient) GetRootAnchors(ctx context.Context) ([]*RootAnchor, error) {
+	rootAnchors := make([]*RootAnchor, 0)
+	err := client.Rpc(ctx, "getrootanchors", []interface{}{}, &rootAnchors)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	return nil
+	return rootAnchors, nil
 }

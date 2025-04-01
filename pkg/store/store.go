@@ -508,7 +508,7 @@ func StoreBlock(ctx context.Context, pg *pgx.Conn, block *node.Block, sc *node.S
 
 	// Store Bitcoin block and collect timings
 	var timings *blockTimings
-	// tx, err, timings = StoreBitcoinBlock(block, tx)
+	tx, err, timings = StoreBitcoinBlock(block, tx)
 	if err != nil {
 		return err
 	}
