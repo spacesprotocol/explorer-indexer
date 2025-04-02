@@ -119,10 +119,5 @@ func (client *BitcoinClient) GetMempoolTxIds(ctx context.Context) ([][]string, e
 			orderedGroups = append(orderedGroups, group)
 		}
 	}
-	for _, a := range orderedGroups {
-		log.Print(a)
-
-	}
-
 	return orderedGroups, nil
 }
