@@ -56,7 +56,7 @@ func getFastSyncBlockHeight() int32 {
 func main() {
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
 	bitcoinClient := node.NewClient(os.Getenv("BITCOIN_NODE_URI"), os.Getenv("BITCOIN_NODE_USER"), os.Getenv("BITCOIN_NODE_PASSWORD"))
-	spacesClient := node.NewClient(os.Getenv("SPACES_NODE_URI"), "test", "test")
+	spacesClient := node.NewClient(os.Getenv("SPACES_NODE_URI"), os.Getenv("RPC_USER"), os.Getenv("RPC_PASSWORD"))
 
 	sc := node.SpacesClient{Client: spacesClient}
 	bc := node.BitcoinClient{Client: bitcoinClient}
