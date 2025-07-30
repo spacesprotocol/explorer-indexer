@@ -106,8 +106,16 @@ type Tip struct {
 }
 
 type ServerInfo struct {
-	Chain string `json:"chain"`
-	Tip   Tip    `json:"tip"`
+	Network  string    `json:"network"`
+	Tip      Tip       `json:"tip"`
+	Chain    ChainInfo `json:"chain"`
+	Ready    bool      `json:"ready"`
+	Progress float64   `json:"progress"`
+}
+
+type ChainInfo struct {
+	Blocks  int `json:"blocks"`
+	Headers int `json:"headers"`
 }
 
 type RollOutSpace struct {
