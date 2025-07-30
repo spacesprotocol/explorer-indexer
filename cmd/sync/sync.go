@@ -177,6 +177,16 @@ func syncBlocks(pg *pgx.Conn, bc *node.BitcoinClient, sc *node.SpacesClient) err
 	}
 	log.Printf("found synced block of height %d and hash %s", height, hash)
 
+	if err := syncRollouts(ctx, pg, sc); err != nil {
+		log.Println(err)
+		return err
+	}
+
+	if err := syncRootAnchors(ctx, pg, sc); err != nil {
+		log.Println(err)
+		return err
+	}
+
 	if height < fastSyncBlockHeight {
 		height = fastSyncBlockHeight
 	}
