@@ -1,6 +1,7 @@
 -- +goose NO TRANSACTION
 -- +goose Up
 -- +goose StatementBegin
+SET statement_timeout = 0;
 CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_transactions_mempool
 ON transactions(block_hash)
 WHERE block_hash = '\xdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef';
