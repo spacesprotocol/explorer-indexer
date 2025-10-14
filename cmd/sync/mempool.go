@@ -110,11 +110,23 @@ func cleanupMempoolTxs(ctx context.Context, pg *pgx.Conn, nodeMempoolTxs map[str
 		defer sqlTx.Rollback(ctx)
 
 		q := db.New(sqlTx)
-		for _, txid := range toDelete {
-			if err := q.DeleteMempoolTransactionByTxid(ctx, txid); err != nil {
+
+		// Delete in chunks to avoid overwhelming the database
+		chunkSize := 500
+		for i := 0; i < len(toDelete); i += chunkSize {
+			end := i + chunkSize
+			if end > len(toDelete) {
+				end = len(toDelete)
+			}
+			chunk := toDelete[i:end]
+
+			log.Printf("deleting chunk %d-%d of %d mempool txs", i+1, end, len(toDelete))
+			if err := q.DeleteMempoolTransactionsByTxids(ctx, chunk); err != nil {
 				return err
 			}
 		}
+
+		log.Printf("successfully deleted %d mempool txs", len(toDelete))
 		return sqlTx.Commit(ctx)
 	}
 	return nil
