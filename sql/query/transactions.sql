@@ -50,3 +50,8 @@ WHERE block_hash = '\xdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefde
 DELETE FROM transactions
 where txid = $1
 AND block_hash = '\xdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef';
+
+-- name: DeleteMempoolTransactionsByTxids :exec
+DELETE FROM transactions
+WHERE txid = ANY($1::bytea[])
+AND block_hash = '\xdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef';
