@@ -44,7 +44,7 @@ func (q *Queries) DeleteMempoolTransactionsByTxids(ctx context.Context, dollar_1
 }
 
 const getMempoolTransactions = `-- name: GetMempoolTransactions :many
-SELECT txid, tx_hash, version, size, vsize, weight, locktime, fee, block_hash, index
+SELECT txid, tx_hash, version, size, vsize, weight, locktime, fee, block_hash, index, input_count, output_count, total_output_value
 FROM transactions
 WHERE block_hash = '\xdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef'
 ORDER BY index
@@ -76,6 +76,9 @@ func (q *Queries) GetMempoolTransactions(ctx context.Context, arg GetMempoolTran
 			&i.Fee,
 			&i.BlockHash,
 			&i.Index,
+			&i.InputCount,
+			&i.OutputCount,
+			&i.TotalOutputValue,
 		); err != nil {
 			return nil, err
 		}
@@ -116,7 +119,7 @@ func (q *Queries) GetMempoolTxids(ctx context.Context) ([]types.Bytes, error) {
 
 const getTransactionsByBlockHeight = `-- name: GetTransactionsByBlockHeight :many
 SELECT
-  transactions.txid, transactions.tx_hash, transactions.version, transactions.size, transactions.vsize, transactions.weight, transactions.locktime, transactions.fee, transactions.block_hash, transactions.index,
+  transactions.txid, transactions.tx_hash, transactions.version, transactions.size, transactions.vsize, transactions.weight, transactions.locktime, transactions.fee, transactions.block_hash, transactions.index, transactions.input_count, transactions.output_count, transactions.total_output_value,
   COALESCE(blocks.height, -1)::integer AS block_height_not_null
 FROM
   transactions
@@ -143,6 +146,9 @@ type GetTransactionsByBlockHeightRow struct {
 	Fee                int64
 	BlockHash          types.Bytes
 	Index              int32
+	InputCount         int32
+	OutputCount        int32
+	TotalOutputValue   int64
 	BlockHeightNotNull int32
 }
 
@@ -166,6 +172,9 @@ func (q *Queries) GetTransactionsByBlockHeight(ctx context.Context, arg GetTrans
 			&i.Fee,
 			&i.BlockHash,
 			&i.Index,
+			&i.InputCount,
+			&i.OutputCount,
+			&i.TotalOutputValue,
 			&i.BlockHeightNotNull,
 		); err != nil {
 			return nil, err
@@ -178,22 +187,42 @@ func (q *Queries) GetTransactionsByBlockHeight(ctx context.Context, arg GetTrans
 	return items, nil
 }
 
+type InsertBatchTransactionsParams struct {
+	Txid             types.Bytes
+	TxHash           types.Bytes
+	Version          int32
+	Size             int64
+	Vsize            int64
+	Weight           int64
+	Locktime         int32
+	Fee              int64
+	BlockHash        types.Bytes
+	Index            int32
+	InputCount       int32
+	OutputCount      int32
+	TotalOutputValue int64
+}
+
 const insertMempoolTransaction = `-- name: InsertMempoolTransaction :exec
 INSERT INTO transactions (
-    txid, tx_hash, version, size, vsize, weight, locktime, fee, block_hash
-) VALUES ( $1, $2, $3, $4, $5, $6, $7, $8, $9)
+    txid, tx_hash, version, size, vsize, weight, locktime, fee, block_hash,
+    input_count, output_count, total_output_value
+) VALUES ( $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
 `
 
 type InsertMempoolTransactionParams struct {
-	Txid      types.Bytes
-	TxHash    types.Bytes
-	Version   int32
-	Size      int64
-	Vsize     int64
-	Weight    int64
-	Locktime  int32
-	Fee       int64
-	BlockHash types.Bytes
+	Txid             types.Bytes
+	TxHash           types.Bytes
+	Version          int32
+	Size             int64
+	Vsize            int64
+	Weight           int64
+	Locktime         int32
+	Fee              int64
+	BlockHash        types.Bytes
+	InputCount       int32
+	OutputCount      int32
+	TotalOutputValue int64
 }
 
 func (q *Queries) InsertMempoolTransaction(ctx context.Context, arg InsertMempoolTransactionParams) error {
@@ -207,27 +236,34 @@ func (q *Queries) InsertMempoolTransaction(ctx context.Context, arg InsertMempoo
 		arg.Locktime,
 		arg.Fee,
 		arg.BlockHash,
+		arg.InputCount,
+		arg.OutputCount,
+		arg.TotalOutputValue,
 	)
 	return err
 }
 
 const insertTransaction = `-- name: InsertTransaction :exec
 INSERT INTO transactions (
-    txid, tx_hash, version, size, vsize, weight, locktime, fee, block_hash, index
-) VALUES ( $1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+    txid, tx_hash, version, size, vsize, weight, locktime, fee, block_hash, index,
+    input_count, output_count, total_output_value
+) VALUES ( $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
 `
 
 type InsertTransactionParams struct {
-	Txid      types.Bytes
-	TxHash    types.Bytes
-	Version   int32
-	Size      int64
-	Vsize     int64
-	Weight    int64
-	Locktime  int32
-	Fee       int64
-	BlockHash types.Bytes
-	Index     int32
+	Txid             types.Bytes
+	TxHash           types.Bytes
+	Version          int32
+	Size             int64
+	Vsize            int64
+	Weight           int64
+	Locktime         int32
+	Fee              int64
+	BlockHash        types.Bytes
+	Index            int32
+	InputCount       int32
+	OutputCount      int32
+	TotalOutputValue int64
 }
 
 func (q *Queries) InsertTransaction(ctx context.Context, arg InsertTransactionParams) error {
@@ -242,6 +278,9 @@ func (q *Queries) InsertTransaction(ctx context.Context, arg InsertTransactionPa
 		arg.Fee,
 		arg.BlockHash,
 		arg.Index,
+		arg.InputCount,
+		arg.OutputCount,
+		arg.TotalOutputValue,
 	)
 	return err
 }

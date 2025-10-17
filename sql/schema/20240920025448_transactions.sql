@@ -12,6 +12,11 @@ CREATE TABLE transactions (
     block_hash bytea REFERENCES blocks (hash) ON DELETE CASCADE,
     "index" integer NOT NULL,
 
+
+    input_count integer NOT NULL DEFAULT 0,
+    output_count integer NOT NULL DEFAULT 0,
+    total_output_value bigint NOT NULL DEFAULT 0,
+
     PRIMARY KEY (block_hash, txid),
     UNIQUE (block_hash, txid)
 );

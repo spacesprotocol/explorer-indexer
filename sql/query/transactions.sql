@@ -1,13 +1,20 @@
 -- name: InsertTransaction :exec
 INSERT INTO transactions (
-    txid, tx_hash, version, size, vsize, weight, locktime, fee, block_hash, index
-) VALUES ( $1, $2, $3, $4, $5, $6, $7, $8, $9, $10);
+    txid, tx_hash, version, size, vsize, weight, locktime, fee, block_hash, index,
+    input_count, output_count, total_output_value
+) VALUES ( $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13);
 
 -- name: InsertMempoolTransaction :exec
 INSERT INTO transactions (
-    txid, tx_hash, version, size, vsize, weight, locktime, fee, block_hash
-) VALUES ( $1, $2, $3, $4, $5, $6, $7, $8, $9);
+    txid, tx_hash, version, size, vsize, weight, locktime, fee, block_hash,
+    input_count, output_count, total_output_value
+) VALUES ( $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12);
 
+-- name: InsertBatchTransactions :copyfrom
+INSERT INTO transactions (
+    txid, tx_hash, version, size, vsize, weight, locktime, fee, block_hash, index,
+    input_count, output_count, total_output_value
+) VALUES ( $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13);
 
 --- name: GetTransactionByTxid :one
 SELECT

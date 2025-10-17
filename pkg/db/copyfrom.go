@@ -9,13 +9,13 @@ import (
 	"context"
 )
 
-// iteratorForInsertBatchTxInputs implements pgx.CopyFromSource.
-type iteratorForInsertBatchTxInputs struct {
-	rows                 []InsertBatchTxInputsParams
+// iteratorForInsertBatchTransactions implements pgx.CopyFromSource.
+type iteratorForInsertBatchTransactions struct {
+	rows                 []InsertBatchTransactionsParams
 	skippedFirstNextCall bool
 }
 
-func (r *iteratorForInsertBatchTxInputs) Next() bool {
+func (r *iteratorForInsertBatchTransactions) Next() bool {
 	if len(r.rows) == 0 {
 		return false
 	}
@@ -27,60 +27,28 @@ func (r *iteratorForInsertBatchTxInputs) Next() bool {
 	return len(r.rows) > 0
 }
 
-func (r iteratorForInsertBatchTxInputs) Values() ([]interface{}, error) {
+func (r iteratorForInsertBatchTransactions) Values() ([]interface{}, error) {
 	return []interface{}{
-		r.rows[0].BlockHash,
 		r.rows[0].Txid,
+		r.rows[0].TxHash,
+		r.rows[0].Version,
+		r.rows[0].Size,
+		r.rows[0].Vsize,
+		r.rows[0].Weight,
+		r.rows[0].Locktime,
+		r.rows[0].Fee,
+		r.rows[0].BlockHash,
 		r.rows[0].Index,
-		r.rows[0].HashPrevout,
-		r.rows[0].IndexPrevout,
-		r.rows[0].Sequence,
-		r.rows[0].Coinbase,
-		r.rows[0].Txinwitness,
-		r.rows[0].Scriptsig,
+		r.rows[0].InputCount,
+		r.rows[0].OutputCount,
+		r.rows[0].TotalOutputValue,
 	}, nil
 }
 
-func (r iteratorForInsertBatchTxInputs) Err() error {
+func (r iteratorForInsertBatchTransactions) Err() error {
 	return nil
 }
 
-func (q *Queries) InsertBatchTxInputs(ctx context.Context, arg []InsertBatchTxInputsParams) (int64, error) {
-	return q.db.CopyFrom(ctx, []string{"tx_inputs"}, []string{"block_hash", "txid", "index", "hash_prevout", "index_prevout", "sequence", "coinbase", "txinwitness", "scriptsig"}, &iteratorForInsertBatchTxInputs{rows: arg})
-}
-
-// iteratorForInsertBatchTxOutputs implements pgx.CopyFromSource.
-type iteratorForInsertBatchTxOutputs struct {
-	rows                 []InsertBatchTxOutputsParams
-	skippedFirstNextCall bool
-}
-
-func (r *iteratorForInsertBatchTxOutputs) Next() bool {
-	if len(r.rows) == 0 {
-		return false
-	}
-	if !r.skippedFirstNextCall {
-		r.skippedFirstNextCall = true
-		return true
-	}
-	r.rows = r.rows[1:]
-	return len(r.rows) > 0
-}
-
-func (r iteratorForInsertBatchTxOutputs) Values() ([]interface{}, error) {
-	return []interface{}{
-		r.rows[0].BlockHash,
-		r.rows[0].Txid,
-		r.rows[0].Index,
-		r.rows[0].Value,
-		r.rows[0].Scriptpubkey,
-	}, nil
-}
-
-func (r iteratorForInsertBatchTxOutputs) Err() error {
-	return nil
-}
-
-func (q *Queries) InsertBatchTxOutputs(ctx context.Context, arg []InsertBatchTxOutputsParams) (int64, error) {
-	return q.db.CopyFrom(ctx, []string{"tx_outputs"}, []string{"block_hash", "txid", "index", "value", "scriptpubkey"}, &iteratorForInsertBatchTxOutputs{rows: arg})
+func (q *Queries) InsertBatchTransactions(ctx context.Context, arg []InsertBatchTransactionsParams) (int64, error) {
+	return q.db.CopyFrom(ctx, []string{"transactions"}, []string{"txid", "tx_hash", "version", "size", "vsize", "weight", "locktime", "fee", "block_hash", "index", "input_count", "output_count", "total_output_value"}, &iteratorForInsertBatchTransactions{rows: arg})
 }

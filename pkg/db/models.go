@@ -83,39 +83,19 @@ type Rollout struct {
 }
 
 type Transaction struct {
-	Txid      types.Bytes
-	TxHash    types.Bytes
-	Version   int32
-	Size      int64
-	Vsize     int64
-	Weight    int64
-	Locktime  int32
-	Fee       int64
-	BlockHash types.Bytes
-	Index     int32
-}
-
-type TxInput struct {
-	BlockHash    types.Bytes
-	Txid         types.Bytes
-	Index        int64
-	HashPrevout  *types.Bytes
-	IndexPrevout int64
-	Sequence     int64
-	Coinbase     *types.Bytes
-	Txinwitness  []types.Bytes
-	Scriptsig    *types.Bytes
-}
-
-type TxOutput struct {
-	BlockHash        types.Bytes
 	Txid             types.Bytes
-	Index            int64
-	Value            int64
-	Scriptpubkey     types.Bytes
-	SpenderTxid      *types.Bytes
-	SpenderIndex     pgtype.Int8
-	SpenderBlockHash *types.Bytes
+	TxHash           types.Bytes
+	Version          int32
+	Size             int64
+	Vsize            int64
+	Weight           int64
+	Locktime         int32
+	Fee              int64
+	BlockHash        types.Bytes
+	Index            int32
+	InputCount       int32
+	OutputCount      int32
+	TotalOutputValue int64
 }
 
 type Vmetaout struct {
