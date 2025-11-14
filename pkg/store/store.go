@@ -353,22 +353,22 @@ func prepareBatchTransactions(transactions []node.Transaction, blockHash *Bytes)
 
 // detects chain split (reorganization) and
 // returns the height and blockhash of the last block that is identical in the db and in the node
-func GetSyncedHead(pg *pgx.Conn, bc *node.BitcoinClient) (int32, *Bytes, error) {
+func GetSyncedHead(ctx context.Context, pg *pgx.Conn, bc *node.BitcoinClient) (int32, *Bytes, error) {
 	q := db.New(pg)
 	//takes last block from the DB
-	height, err := q.GetBlocksMaxHeight(context.Background())
+	height, err := q.GetBlocksMaxHeight(ctx)
 	if err != nil {
 		return -1, nil, err
 	}
 	//height is the height of the db block
 	for height >= 0 {
 		//take last block hash from the DB
-		dbHash, err := q.GetBlockHashByHeight(context.Background(), height)
+		dbHash, err := q.GetBlockHashByHeight(ctx, height)
 		if err != nil {
 			return -1, nil, err
 		}
 		//takes the block of same height from the bitcoin node
-		nodeHash, err := bc.GetBlockHash(context.Background(), int(height))
+		nodeHash, err := bc.GetBlockHash(ctx, int(height))
 		if err != nil {
 			return -1, nil, err
 		}
@@ -376,10 +376,10 @@ func GetSyncedHead(pg *pgx.Conn, bc *node.BitcoinClient) (int32, *Bytes, error) 
 		// dbHash Bytes
 		if bytes.Equal(dbHash, *nodeHash) {
 			//marking all the blocks in the DB after the sycned height as orphans
-			if err := q.SetOrphanAfterHeight(context.Background(), height); err != nil {
+			if err := q.SetOrphanAfterHeight(ctx, height); err != nil {
 				return -1, nil, err
 			}
-			if err := q.SetNegativeHeightToOrphans(context.Background()); err != nil {
+			if err := q.SetNegativeHeightToOrphans(ctx); err != nil {
 				return -1, nil, err
 			}
 			return height, &dbHash, nil

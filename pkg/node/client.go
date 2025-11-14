@@ -6,10 +6,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-
-	"strings"
-
 	"net/http"
+	"strings"
+	"time"
 )
 
 type Client struct {
@@ -20,7 +19,22 @@ type Client struct {
 }
 
 func NewClient(origin, username, password string) *Client {
-	return &Client{&http.Client{}, origin, username, password}
+	transport := &http.Transport{
+		MaxIdleConns:        100,
+		MaxIdleConnsPerHost: 10,
+		IdleConnTimeout:     90 * time.Second,
+		DisableKeepAlives:   false,
+	}
+
+	return &Client{
+		httpclient: &http.Client{
+			Transport: transport,
+			Timeout:   30 * time.Second, // Overall request timeout
+		},
+		origin:   origin,
+		username: username,
+		password: password,
+	}
 }
 
 func (client *Client) do(ctx context.Context, method string, path string, body interface{}, target interface{}) error {

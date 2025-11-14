@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"log"
-	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/spacesprotocol/explorer-indexer/pkg/db"
@@ -12,10 +11,11 @@ import (
 	. "github.com/spacesprotocol/explorer-indexer/pkg/types"
 )
 
-func syncMempool(pg *pgx.Conn, bc *node.BitcoinClient, sc *node.SpacesClient) error {
-	ctx, cancel := context.WithTimeout(context.Background(), mempoolSyncTimeout*time.Second)
+func syncMempool(ctx context.Context, pg *pgx.Conn, bc *node.BitcoinClient, sc *node.SpacesClient) error {
+	mempoolCtx, cancel := context.WithTimeout(ctx, mempoolSyncTimeout)
 	defer cancel()
 
+	ctx = mempoolCtx
 	currentGroups, err := bc.GetMempoolTxIds(ctx)
 	if err != nil {
 		return err

@@ -24,7 +24,8 @@ var fastSyncBlockHeight = getFastSyncBlockHeight()
 var mempoolChunkSize = getMempoolChunkSize()
 
 const deadbeefString = "deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef"
-const mempoolSyncTimeout = 100 //in seconds
+const mempoolSyncTimeout = 30 * time.Second //in seconds
+const syncTimeout = 300 * time.Second
 
 func getMempoolChunkSize() int {
 	if height := os.Getenv("MEMPOOL_CHUNK_SIZE"); height != "" {
@@ -67,10 +68,9 @@ func main() {
 	}
 
 	for {
-		connCtx, cancel := context.WithTimeout(context.Background(), time.Minute)
-
+		connCtx, connCancel := context.WithTimeout(context.Background(), 30*time.Second)
 		pg, err := pgx.Connect(connCtx, os.Getenv("POSTGRES_URI"))
-		cancel()
+		connCancel()
 
 		if err != nil {
 			log.Printf("failed to connect to database: %v", err)
@@ -78,19 +78,25 @@ func main() {
 			continue
 		}
 
-		defer pg.Close(context.Background())
+		syncCtx, syncCancel := context.WithTimeout(context.Background(), syncTimeout)
 
-		if err := syncBlocks(pg, &bc, &sc); err != nil {
+		if err := syncBlocks(syncCtx, pg, &bc, &sc); err != nil {
 			log.Println(err)
+			syncCancel()
 			pg.Close(context.Background())
 			time.Sleep(time.Second)
 			continue
 		}
 
-		if err := syncMempool(pg, &bc, &sc); err != nil {
+		if err := syncMempool(syncCtx, pg, &bc, &sc); err != nil {
 			log.Println(err)
+			syncCancel()
+			pg.Close(context.Background())
+			time.Sleep(time.Duration(updateInterval) * time.Second)
+			continue
 		}
 
+		syncCancel()
 		if err := pg.Close(context.Background()); err != nil {
 			log.Printf("error closing connection: %v", err)
 		}
@@ -168,10 +174,9 @@ func syncRollouts(ctx context.Context, pg *pgx.Conn, sc *node.SpacesClient) erro
 	return nil
 }
 
-func syncBlocks(pg *pgx.Conn, bc *node.BitcoinClient, sc *node.SpacesClient) error {
-	ctx := context.Background()
+func syncBlocks(ctx context.Context, pg *pgx.Conn, bc *node.BitcoinClient, sc *node.SpacesClient) error {
 	var hash *Bytes
-	height, hash, err := store.GetSyncedHead(pg, bc)
+	height, hash, err := store.GetSyncedHead(ctx, pg, bc)
 	if err != nil {
 		return err
 	}
