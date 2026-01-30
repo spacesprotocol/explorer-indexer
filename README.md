@@ -3,12 +3,53 @@
 This repository contains an indexer for the spaces protocol explorer. 
 The indexer retrieves block data from the bitcoin and spaces nodes and stores it into the postgresql database.
 
+## Operation
+
+It stores both bitcoin and spaces data, for the bitcoin data it only stores tx hashes and number of inputs and outputs
+along with their values (no scriptsig/scriptpubkey/witness data). 
+
+It is capable of detecting chain reorganizations, moreover it stores orphaned txs. Also it syncs the local bitcoin node mempool and parses corresponding spaces events (however
+does not store space pointers mempool events, as the needed spaced API is not ready as of time of writing).
+
+
+It has several modes of operation, the main one comes with an executable `sync` from `cmd/sync`, which does the sync.
+It has 'fast' sync which starts not from the genesis block, but from FAST_SYNC_BLOCK_HEIGHT, also will sync spaces data
+only from ACTIVATION_BLOCK_HEIGHT. See additional environment variables in env.example.
+
+Another executable is `populate` which is used only to populate spaces data, which is useful when a new non-backward
+compatible feature is added: one can delete spaces-related tables completely and make a fresh sync which is considerably quick.
+
+### Database Design Note
+
+Since the indexer stores both orphaned blocks and mempool transactions, there are "virtual" blocks in the database:
+- Mempool transactions use a special block hash: `deadbeefdeadbeef...` 
+- Orphaned blocks are kept with `orphan = true` flag
+
+Because of this, a transaction is uniquely identified by the pair `(block_hash, txid)`, not just by `txid` alone. The same transaction may appear multiple times with different block hashes (e.g., once in mempool, once in a confirmed block, or in competing chain tips).
+
+## Reusable Packages
+
+The `pkg/node` package provides Go wrappers for Bitcoin Core and Spaces daemon RPC APIs that can be imported by other projects:
+
+```go
+import "github.com/spacesprotocol/explorer-indexer/pkg/node"
+
+// Bitcoin Core RPC client
+bc := node.BitcoinClient{Client: node.NewClient(uri, user, password)}
+block, err := bc.GetBlock(ctx, blockHash)
+
+// Spaces daemon RPC client
+sc := node.SpacesClient{Client: node.NewClient(uri, user, password)}
+meta, err := sc.GetBlockMeta(ctx, blockHash)
+```
+
+This package is used by other projects such as [spaces marketplace](https://spaces.market)
+
 ## Requirements
 - Go v1.21 or higher
-- PostgreSQL 14 or higher
-- Docker v25.0.3 or higher (for containerized setups)
-- Bitcoin Core node (for non-docker setups)
-- Spaces protocol node (for non-docker setups)
+- PostgreSQL 16 or higher
+- Bitcoin Core node 
+- Spaces protocol daemon 
 
 ## Installation
 1. Clone the repository
@@ -25,34 +66,15 @@ go mod download
 3. Build the executables
 ```bash
 go build ./cmd/sync
-go build ./cmd/backfill
+go build ./cmd/populate
 ```
-
-## Usage
-The indexer provides two main executables:
+## Running 
 
 ### Sync Service
 The primary service that indexes both bitcoin and spaces protocol data:
 ```bash
 ./sync
 ```
-
-Supports two sync modes:
-- **Full Sync**: Indexes from the genesis block (slower but complete)
-- **Fast Sync**: Starts from the spaces protocol activation block
-  - Mainnet: Block 871222
-  - Testnet4: Block 50000
-
-#### Backfill Service
-Used to populate historical bitcoin blocks when using fast sync mode:
-```bash
-./backfill
-```
-Note: backfill only stores bitcoin data, not spaces protocol data.
-
-#### Populate service 
-
-Populates only spaces-related data to the db. Can be thought as fast 'rescan'.
 
 ### Configuration
 Configuration is handled through environment variables. Copy and modify the example configuration:
@@ -62,19 +84,8 @@ cp env.example .env
 ```
 
 ## Development
-There are three ways to set up the development environment:
 
-### Complete docker regtest setup 
-
-This setup is ideal for working on the [frontend part](https://github.com/spacesprotocol/explorer) as it provides a complete backend environment.
-
-The docker setup in the `docker` folder provides:
-- PostgreSQL database
-- Automated database migrations
-- Bitcoin node (regtest network)
-- Spaced node 
-- Pre-configured spaces transactions with bids and opens
-
+### Dockerized setup
 Setup steps:
 ```bash
 # Build the docker images
@@ -86,11 +97,10 @@ docker compose -f docker-regtest.yml up
 
 Docker data is stored in `regtest-data` directory.
 
-### PostgreSQL-only docker setup
+### Dockerfile for PostgreSQL
 If you're working on the indexer itself and want to manage the blockchain nodes separately, you can run just PostgreSQL in docker:
 
 ```bash
-# Start database container
 docker-compose up
 ```
 
@@ -111,15 +121,22 @@ For complete control over your environment, you can:
 1. Run PostgreSQL directly on your system and run migrations
 2. Set up Bitcoin and Spaces nodes manually
 3. Configure the environment variables to point to your services
-4. Run the needed executable
+4. Run the sync process
 
 ### SQLC
 
-To add create additional sql queries, it's advised to use SQLC. It generates idiomatic go code from the .sql types and queries. Query files are located in `sql/query`.
+To create additional sql queries, it's advised to use SQLC. It generates idiomatic go code from the .sql types and queries. Query files are located in `sql/query`.
 
 ```
 go install github.com/kyleconroy/sqlc/cmd/sqlc@latest
 sqlc generate
 ```
 
+## Notes
 
+Previously the indexer indexed all inputs/outputs and the whole blockchain data, there might be some remnants of it.
+
+
+## License 
+
+MIT

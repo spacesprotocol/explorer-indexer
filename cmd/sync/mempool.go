@@ -78,13 +78,14 @@ func syncMempool(ctx context.Context, pg *pgx.Conn, bc *node.BitcoinClient, sc *
 		if err != nil {
 			return err
 		}
-		defer sqlTx.Rollback(ctx)
 
 		if err := processTxGroup(ctx, sqlTx, bc, sc, txGroup, deadbeef); err != nil {
+			sqlTx.Rollback(ctx)
 			return err
 		}
 
 		if err := sqlTx.Commit(ctx); err != nil {
+			sqlTx.Rollback(ctx)
 			return err
 		}
 	}
@@ -112,7 +113,7 @@ func cleanupMempoolTxs(ctx context.Context, pg *pgx.Conn, nodeMempoolTxs map[str
 		q := db.New(sqlTx)
 
 		// Delete in chunks to avoid overwhelming the database
-		chunkSize := 500
+		chunkSize := mempoolChunkSize
 		for i := 0; i < len(toDelete); i += chunkSize {
 			end := i + chunkSize
 			if end > len(toDelete) {
@@ -146,7 +147,7 @@ func processTxGroup(ctx context.Context, sqlTx pgx.Tx, bc *node.BitcoinClient, s
 
 		// Store only the last transaction (dependent one)
 		if i == len(txGroup)-1 {
-			if err := store.StoreTransaction(q, tx, &deadbeef, nil); err != nil {
+			if err := store.StoreTransaction(ctx, q, tx, &deadbeef, nil); err != nil {
 				return err
 			}
 		}
@@ -161,9 +162,13 @@ func processTxGroup(ctx context.Context, sqlTx pgx.Tx, bc *node.BitcoinClient, s
 		// Process the last metaTx since it's the dependent one
 		if len(metaTxs) > 0 && metaTxs[len(metaTxs)-1] != nil {
 			lastMetaTx := metaTxs[len(metaTxs)-1]
-			if sqlTx, err = store.StoreSpacesTransaction(*lastMetaTx, deadbeef, sqlTx); err != nil {
+			if sqlTx, err = store.StoreSpacesTransaction(ctx, *lastMetaTx, deadbeef, sqlTx); err != nil {
 				return err
 			}
+
+			// if sqlTx, err = store.StoreSpacesPtrTransaction(ctx, *lastMetaTx, deadbeef, sqlTx); err != nil {
+			// 	return err
+			// }
 		}
 	}
 	return nil

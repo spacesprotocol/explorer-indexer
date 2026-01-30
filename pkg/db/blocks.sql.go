@@ -22,7 +22,7 @@ func (q *Queries) DeleteBlocksAfterHeight(ctx context.Context, height int32) err
 }
 
 const getBlockByHash = `-- name: GetBlockByHash :one
-SELECT blocks.hash, blocks.size, blocks.stripped_size, blocks.weight, blocks.height, blocks.version, blocks.hash_merkle_root, blocks.time, blocks.median_time, blocks.nonce, blocks.bits, blocks.difficulty, blocks.chainwork, blocks.orphan, blocks.root_anchor, (
+SELECT blocks.hash, blocks.size, blocks.stripped_size, blocks.weight, blocks.height, blocks.version, blocks.hash_merkle_root, blocks.time, blocks.median_time, blocks.nonce, blocks.bits, blocks.difficulty, blocks.chainwork, blocks.orphan, blocks.spaces_root, blocks.pointers_root, (
   SELECT COUNT(*) FROM transactions WHERE blocks.hash = transactions.block_hash
 )::integer AS txs_count
 FROM blocks
@@ -44,7 +44,8 @@ type GetBlockByHashRow struct {
 	Difficulty     float64
 	Chainwork      types.Bytes
 	Orphan         bool
-	RootAnchor     *types.Bytes
+	SpacesRoot     *types.Bytes
+	PointersRoot   *types.Bytes
 	TxsCount       int32
 }
 
@@ -66,14 +67,15 @@ func (q *Queries) GetBlockByHash(ctx context.Context, hash types.Bytes) (GetBloc
 		&i.Difficulty,
 		&i.Chainwork,
 		&i.Orphan,
-		&i.RootAnchor,
+		&i.SpacesRoot,
+		&i.PointersRoot,
 		&i.TxsCount,
 	)
 	return i, err
 }
 
 const getBlockByHeight = `-- name: GetBlockByHeight :one
-SELECT blocks.hash, blocks.size, blocks.stripped_size, blocks.weight, blocks.height, blocks.version, blocks.hash_merkle_root, blocks.time, blocks.median_time, blocks.nonce, blocks.bits, blocks.difficulty, blocks.chainwork, blocks.orphan, blocks.root_anchor, (
+SELECT blocks.hash, blocks.size, blocks.stripped_size, blocks.weight, blocks.height, blocks.version, blocks.hash_merkle_root, blocks.time, blocks.median_time, blocks.nonce, blocks.bits, blocks.difficulty, blocks.chainwork, blocks.orphan, blocks.spaces_root, blocks.pointers_root, (
   SELECT COUNT(*) FROM transactions WHERE blocks.hash = transactions.block_hash
 )::integer AS txs_count
 FROM blocks
@@ -95,7 +97,8 @@ type GetBlockByHeightRow struct {
 	Difficulty     float64
 	Chainwork      types.Bytes
 	Orphan         bool
-	RootAnchor     *types.Bytes
+	SpacesRoot     *types.Bytes
+	PointersRoot   *types.Bytes
 	TxsCount       int32
 }
 
@@ -117,7 +120,8 @@ func (q *Queries) GetBlockByHeight(ctx context.Context, height int32) (GetBlockB
 		&i.Difficulty,
 		&i.Chainwork,
 		&i.Orphan,
-		&i.RootAnchor,
+		&i.SpacesRoot,
+		&i.PointersRoot,
 		&i.TxsCount,
 	)
 	return i, err
@@ -137,7 +141,7 @@ func (q *Queries) GetBlockHashByHeight(ctx context.Context, height int32) (types
 }
 
 const getBlocks = `-- name: GetBlocks :many
-SELECT blocks.hash, blocks.size, blocks.stripped_size, blocks.weight, blocks.height, blocks.version, blocks.hash_merkle_root, blocks.time, blocks.median_time, blocks.nonce, blocks.bits, blocks.difficulty, blocks.chainwork, blocks.orphan, blocks.root_anchor, (
+SELECT blocks.hash, blocks.size, blocks.stripped_size, blocks.weight, blocks.height, blocks.version, blocks.hash_merkle_root, blocks.time, blocks.median_time, blocks.nonce, blocks.bits, blocks.difficulty, blocks.chainwork, blocks.orphan, blocks.spaces_root, blocks.pointers_root, (
   SELECT COUNT(*) FROM transactions WHERE blocks.hash = transactions.block_hash
 )::integer AS txs_count
 FROM blocks
@@ -165,7 +169,8 @@ type GetBlocksRow struct {
 	Difficulty     float64
 	Chainwork      types.Bytes
 	Orphan         bool
-	RootAnchor     *types.Bytes
+	SpacesRoot     *types.Bytes
+	PointersRoot   *types.Bytes
 	TxsCount       int32
 }
 
@@ -193,7 +198,8 @@ func (q *Queries) GetBlocks(ctx context.Context, arg GetBlocksParams) ([]GetBloc
 			&i.Difficulty,
 			&i.Chainwork,
 			&i.Orphan,
-			&i.RootAnchor,
+			&i.SpacesRoot,
+			&i.PointersRoot,
 			&i.TxsCount,
 		); err != nil {
 			return nil, err
@@ -236,21 +242,55 @@ func (q *Queries) SetOrphanAfterHeight(ctx context.Context, height int32) error 
 	return err
 }
 
+const updatePointersRoot = `-- name: UpdatePointersRoot :exec
+UPDATE blocks set pointers_root = ($1) where hash = ($2)
+`
+
+type UpdatePointersRootParams struct {
+	PointersRoot *types.Bytes
+	Hash         types.Bytes
+}
+
+func (q *Queries) UpdatePointersRoot(ctx context.Context, arg UpdatePointersRootParams) error {
+	_, err := q.db.Exec(ctx, updatePointersRoot, arg.PointersRoot, arg.Hash)
+	return err
+}
+
 const updateRootAnchor = `-- name: UpdateRootAnchor :exec
-UPDATE blocks set root_anchor = ($1) where hash = ($2)
+UPDATE blocks set (spaces_root, pointers_root) = ($1, $2) where hash = ($3)
 `
 
 type UpdateRootAnchorParams struct {
-	RootAnchor *types.Bytes
-	Hash       types.Bytes
+	SpacesRoot   *types.Bytes
+	PointersRoot *types.Bytes
+	Hash         types.Bytes
 }
 
 func (q *Queries) UpdateRootAnchor(ctx context.Context, arg UpdateRootAnchorParams) error {
-	_, err := q.db.Exec(ctx, updateRootAnchor, arg.RootAnchor, arg.Hash)
+	_, err := q.db.Exec(ctx, updateRootAnchor, arg.SpacesRoot, arg.PointersRoot, arg.Hash)
+	return err
+}
+
+const updateSpacesRoot = `-- name: UpdateSpacesRoot :exec
+UPDATE blocks set spaces_root = ($1) where hash = ($2)
+`
+
+type UpdateSpacesRootParams struct {
+	SpacesRoot *types.Bytes
+	Hash       types.Bytes
+}
+
+func (q *Queries) UpdateSpacesRoot(ctx context.Context, arg UpdateSpacesRootParams) error {
+	_, err := q.db.Exec(ctx, updateSpacesRoot, arg.SpacesRoot, arg.Hash)
 	return err
 }
 
 const upsertBlock = `-- name: UpsertBlock :one
+WITH orphan_existing AS (
+    UPDATE blocks
+    SET orphan = true, height = -2
+    WHERE height = $5 AND hash != $1 AND orphan = false
+)
 INSERT INTO blocks (
     hash,
     size,

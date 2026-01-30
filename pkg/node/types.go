@@ -2,6 +2,7 @@ package node
 
 import (
 	"encoding/json"
+	"fmt"
 	"math"
 	"strings"
 
@@ -199,11 +200,112 @@ func (vout *Vout) Scriptpubkey() *Bytes {
 }
 
 type RootAnchor struct {
-	Root  Bytes     `json:"root"`
-	Block BlockInfo `json:"block"`
+	SpacesRoot   Bytes     `json:"spaces_root"`
+	PointersRoot Bytes     `json:"ptrs_root"`
+	Block        BlockInfo `json:"block"`
+}
+
+func (ra *RootAnchor) UnmarshalJSON(data []byte) error {
+	type RootAnchorAlias RootAnchor
+	aux := &struct {
+		SpacesRoot   *Bytes     `json:"spaces_root"`
+		PointersRoot *Bytes     `json:"ptrs_root"`
+		Block        *BlockInfo `json:"block"`
+		*RootAnchorAlias
+	}{
+		RootAnchorAlias: (*RootAnchorAlias)(ra),
+	}
+
+	if err := json.Unmarshal(data, &aux); err != nil {
+		return err
+	}
+	if aux.SpacesRoot == nil {
+		return fmt.Errorf("missing required field: spaces_root")
+	}
+	if aux.PointersRoot == nil {
+		return fmt.Errorf("missing required field: ptrs_root")
+	}
+
+	if aux.PointersRoot == nil {
+		return fmt.Errorf("missing required field: ptrs_root")
+	}
+	if aux.Block == nil {
+		return fmt.Errorf("missing required field: block")
+	}
+	ra.Block = *aux.Block
+	ra.SpacesRoot = *aux.SpacesRoot
+	ra.PointersRoot = *aux.PointersRoot
+	return nil
 }
 
 type BlockInfo struct {
 	Hash   Bytes `json:"hash"`
 	Height int   `json:"height"`
+}
+
+func (bi *BlockInfo) UnmarshalJSON(data []byte) error {
+	type BlockInfoAlias BlockInfo
+	aux := &struct {
+		Hash   *Bytes `json:"hash"`
+		Height *int   `json:"height"`
+		*BlockInfoAlias
+	}{
+		BlockInfoAlias: (*BlockInfoAlias)(bi),
+	}
+
+	if err := json.Unmarshal(data, &aux); err != nil {
+		return err
+	}
+
+	if aux.Hash == nil {
+		return fmt.Errorf("missing required field: hash")
+	}
+	if aux.Height == nil {
+		return fmt.Errorf("missing required field: height")
+	}
+	bi.Hash = *aux.Hash
+	bi.Height = *aux.Height
+
+	return nil
+}
+
+// PTR Protocol types
+type PtrBlock struct {
+	Hash         Bytes       `json:"hash"`
+	Height       uint        `json:"height"`
+	Transactions []PtrTxMeta `json:"tx_meta"`
+}
+
+type PtrTxMeta struct {
+	TxID               Bytes        `json:"txid"`
+	Spends             []uint       `json:"spends"`
+	Creates            []PtrOut     `json:"creates"`
+	Commitments        []Commitment `json:"commitments"`
+	RevokedCommitments []Commitment `json:"revoked_commitments"`
+	RevokedDelegations []Delegation `json:"revoked_delegations"`
+	NewDelegations     []Delegation `json:"new_delegations"`
+	Position           *uint32      `json:"position,omitempty"`
+	Raw                *Bytes       `json:"raw,omitempty"`
+}
+
+type PtrOut struct {
+	N            uint    `json:"n"`
+	ID           *string `json:"id,omitempty"`
+	Data         *Bytes  `json:"data"`
+	LastUpdate   uint32  `json:"last_update"`
+	Value        uint64  `json:"value"`
+	ScriptPubkey Bytes   `json:"script_pubkey"`
+}
+
+type Commitment struct {
+	Space       string `json:"space"`
+	StateRoot   Bytes  `json:"state_root"`
+	PrevRoot    *Bytes `json:"prev_root"`
+	HistoryHash Bytes  `json:"history_hash"`
+	BlockHeight uint32 `json:"block_height"`
+}
+
+type Delegation struct {
+	Space string `json:"space"`
+	Sptr  string `json:"sptr"`
 }

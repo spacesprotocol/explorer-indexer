@@ -73,13 +73,50 @@ type Block struct {
 	Difficulty     float64
 	Chainwork      types.Bytes
 	Orphan         bool
-	RootAnchor     *types.Bytes
+	SpacesRoot     *types.Bytes
+	PointersRoot   *types.Bytes
+}
+
+type Commitment struct {
+	BlockHash   types.Bytes
+	Txid        types.Bytes
+	Name        string
+	StateRoot   *types.Bytes
+	HistoryHash *types.Bytes
+	Revocation  bool
 }
 
 type Rollout struct {
 	Name   string
 	Bid    int64
 	Target int64
+}
+
+type SpacePointer struct {
+	Identifier     int64
+	BlockHash      types.Bytes
+	Txid           types.Bytes
+	Vout           int32
+	Sptr           string
+	Value          int64
+	ScriptPubkey   types.Bytes
+	Data           *types.Bytes
+	SpentBlockHash *types.Bytes
+	SpentTxid      *types.Bytes
+	SpentVin       pgtype.Int4
+}
+
+type SptrDelegation struct {
+	Identifier       int64
+	Sptr             string
+	Name             string
+	BlockHash        types.Bytes
+	Txid             types.Bytes
+	Vout             int32
+	Revoked          bool
+	RevokedBlockHash *types.Bytes
+	RevokedTxid      *types.Bytes
+	RevokedVout      pgtype.Int4
 }
 
 type Transaction struct {

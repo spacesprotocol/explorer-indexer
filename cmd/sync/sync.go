@@ -16,7 +16,6 @@ import (
 	"github.com/spacesprotocol/explorer-indexer/pkg/store"
 
 	_ "github.com/lib/pq"
-	. "github.com/spacesprotocol/explorer-indexer/pkg/types"
 )
 
 var activationBlock = getActivationBlock()
@@ -64,7 +63,7 @@ func main() {
 
 	updateInterval, err := strconv.Atoi(os.Getenv("UPDATE_DB_INTERVAL"))
 	if err != nil {
-		log.Fatalln(err)
+		log.Fatalln(err, "perhaps UPDATE_DB_INTERVAL is not set")
 	}
 
 	for {
@@ -121,7 +120,8 @@ func syncRootAnchors(ctx context.Context, pg *pgx.Conn, sc *node.SpacesClient) e
 	params := db.UpdateRootAnchorParams{}
 	for _, rootAnchor := range result {
 		params.Hash = rootAnchor.Block.Hash
-		params.RootAnchor = &rootAnchor.Root
+		params.SpacesRoot = &rootAnchor.SpacesRoot
+		params.PointersRoot = &rootAnchor.PointersRoot
 
 		if err := q.UpdateRootAnchor(ctx, params); err != nil {
 			log.Printf("error updating root anchor %d: %v", rootAnchor, err)
@@ -175,7 +175,6 @@ func syncRollouts(ctx context.Context, pg *pgx.Conn, sc *node.SpacesClient) erro
 }
 
 func syncBlocks(ctx context.Context, pg *pgx.Conn, bc *node.BitcoinClient, sc *node.SpacesClient) error {
-	var hash *Bytes
 	height, hash, err := store.GetSyncedHead(ctx, pg, bc)
 	if err != nil {
 		return err

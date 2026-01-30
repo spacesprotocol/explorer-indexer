@@ -37,7 +37,7 @@ func NewClient(origin, username, password string) *Client {
 	}
 }
 
-func (client *Client) do(ctx context.Context, method string, path string, body interface{}, target interface{}) error {
+func (client *Client) do(ctx context.Context, method string, path string, body any, target any) error {
 	var reader io.Reader = nil
 	if body != nil {
 		buf, err := json.Marshal(body)
@@ -58,19 +58,24 @@ func (client *Client) do(ctx context.Context, method string, path string, body i
 	}
 	defer res.Body.Close()
 
+	if res.StatusCode < 200 || res.StatusCode >= 300 {
+		bodyBytes, _ := io.ReadAll(res.Body)
+		return fmt.Errorf("HTTP %d: %s", res.StatusCode, string(bodyBytes))
+	}
+
 	return json.NewDecoder(res.Body).Decode(target)
 }
 
-func (client *Client) rest(ctx context.Context, method string, path []string, body interface{}, target interface{}) error {
+func (client *Client) rest(ctx context.Context, method string, path []string, body any, target any) error {
 	p := strings.Join(path, "/")
 	return client.do(ctx, method, p, body, target)
 }
 
 type rpcBody struct {
-	Method  string        `json:"method"`
-	Params  []interface{} `json:"params,omitempty"`
-	JsonRPC string        `json:"jsonrpc"`
-	Id      int           `json:"id"`
+	Method  string `json:"method"`
+	Params  []any  `json:"params,omitempty"`
+	JsonRPC string `json:"jsonrpc"`
+	Id      int    `json:"id"`
 }
 
 type RpcResponse struct {
@@ -83,7 +88,7 @@ type RpcResponse struct {
 	} `json:"error"`
 }
 
-func (client *Client) Rpc(ctx context.Context, method string, params []interface{}, target interface{}) error {
+func (client *Client) Rpc(ctx context.Context, method string, params []any, target any) error {
 	body := rpcBody{method, params, "2.0", 1337}
 	response := RpcResponse{}
 	if err := client.do(ctx, "POST", "", &body, &response); err != nil {
