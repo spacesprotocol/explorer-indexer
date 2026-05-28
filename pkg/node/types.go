@@ -201,7 +201,7 @@ func (vout *Vout) Scriptpubkey() *Bytes {
 
 type RootAnchor struct {
 	SpacesRoot   Bytes     `json:"spaces_root"`
-	PointersRoot Bytes     `json:"ptrs_root"`
+	PointersRoot *Bytes    `json:"ptrs_root"`
 	Block        BlockInfo `json:"block"`
 }
 
@@ -222,19 +222,12 @@ func (ra *RootAnchor) UnmarshalJSON(data []byte) error {
 	if aux.SpacesRoot == nil {
 		return fmt.Errorf("missing required field: spaces_root")
 	}
-	if aux.PointersRoot == nil {
-		return fmt.Errorf("missing required field: ptrs_root")
-	}
-
-	if aux.PointersRoot == nil {
-		return fmt.Errorf("missing required field: ptrs_root")
-	}
 	if aux.Block == nil {
 		return fmt.Errorf("missing required field: block")
 	}
 	ra.Block = *aux.Block
 	ra.SpacesRoot = *aux.SpacesRoot
-	ra.PointersRoot = *aux.PointersRoot
+	ra.PointersRoot = aux.PointersRoot
 	return nil
 }
 

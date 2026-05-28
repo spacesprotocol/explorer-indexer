@@ -48,8 +48,8 @@ This package is used by other projects such as [spaces marketplace](https://spac
 ## Requirements
 - Go v1.21 or higher
 - PostgreSQL 16 or higher
-- Bitcoin Core node 
-- Spaces protocol daemon 
+- Bitcoin Core node  (v0.28+)
+- Spaces protocol daemon (v0.0.7, other versions might have breaking changes)
 
 ## Installation
 1. Clone the repository

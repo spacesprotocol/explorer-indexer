@@ -121,7 +121,7 @@ func syncRootAnchors(ctx context.Context, pg *pgx.Conn, sc *node.SpacesClient) e
 	for _, rootAnchor := range result {
 		params.Hash = rootAnchor.Block.Hash
 		params.SpacesRoot = &rootAnchor.SpacesRoot
-		params.PointersRoot = &rootAnchor.PointersRoot
+		params.PointersRoot = rootAnchor.PointersRoot
 
 		if err := q.UpdateRootAnchor(ctx, params); err != nil {
 			log.Printf("error updating root anchor %d: %v", rootAnchor, err)
